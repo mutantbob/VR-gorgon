@@ -1,0 +1,53 @@
+[package]
+name = "vr-gorgon"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+android-activity = { version = "*" , features=["native-activity"]}
+android_logger = "*"
+log="*"
+rusttype="*"
+glutin = "0.30"
+gl="*"
+egli="*"
+winit = "*"
+raw-window-handle = "0.5.2"
+itertools = "*"
+gl-thin = { path = "../../../../src/android-openxr-exp/gl-thin"}
+bob-shaders = { path = "../../../../src/android-openxr-exp/bob-shaders" }
+
+[dependencies.openxr]
+features=["linked"]
+#version=">=0.18"
+# until the OpenGlEs Graphics backend is published, we must use git
+git="https://github.com/Ralith/openxrs.git"
+rev="48b5875"
+[dependencies.openxr-sys]
+#version=">=0.18"
+# until the OpenGlEs Graphics backend is published, we must use git
+git="https://github.com/Ralith/openxrs.git"
+rev="48b5875"
+
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[package.metadata.android]
+apk_label = "Bob's VR gorgon"
+target_sdk_version = 29
+min_sdk_version = 29
+#runtime_libs = "libs"
+
+[[package.metadata.android.application.activity.intent_filter]]
+actions = ["android.intent.action.MAIN"]
+categories = [
+    "android.intent.category.LAUNCHER",
+    "com.oculus.intent.category.VR",
+]
+
+[patch.crates-io]
+#openxr = { path = "../../../vendor/openxrs/openxr" }
+#openxr-sys = { path = "../../../vendor/openxrs/sys" }
