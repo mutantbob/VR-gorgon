@@ -8,6 +8,7 @@ use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopWindo
 use winit::platform::android::EventLoopBuilderExtAndroid;
 
 mod drawcore;
+mod gorgon1;
 mod rainbow_triangle;
 mod scene;
 mod suzanne;
@@ -58,7 +59,12 @@ fn event_loop_one_pass<T: Drawable, X: std::fmt::Debug, E: std::fmt::Debug>(
     match event {
         Event::Resumed => {
             log::debug!("resume");
-            *app = AppState::Active(factory(event_loop).unwrap());
+            match factory(event_loop) {
+                Ok(drawable) => *app = AppState::Active(drawable),
+                Err(e) => {
+                    log::error!("failed to construct drawable {:?}", e);
+                }
+            }
         }
         Event::Suspended => {
             log::debug!("suspend");
@@ -101,6 +107,8 @@ fn event_loop_one_pass<T: Drawable, X: std::fmt::Debug, E: std::fmt::Debug>(
 //#[cfg(target_os = "android")]
 #[no_mangle]
 fn android_main(android_app: AndroidApp) {
+    std::env::set_var("RUST_BACKTRACE", "1");
+
     android_logger::init_once(
         android_logger::Config::default().with_max_level(log::LevelFilter::Trace),
     );

@@ -6,8 +6,8 @@ use gl_thin::errors::XrErrorWrapped;
 use gl_thin::gl_fancy::GPUState;
 use gl_thin::gl_helper::{explode_if_gl_error, FrameBuffer, GLErrorWrapper, Texture};
 use gl_thin::linear::{
-    xr_matrix4x4f_create_translation_rotation_scale, xr_matrix4x4f_invert_rigid_body, XrMatrix4x4f,
-    XrQuaternionf, XrVector3f,
+    xr_matrix4x4f_create_from_quaternion, xr_matrix4x4f_invert_rigid_body, XrMatrix4x4f,
+    XrQuaternionf,
 };
 use gl_thin::openxr_helpers::{Backend, OpenXRComponent};
 use glutin::config::{ConfigTemplate, ConfigTemplateBuilder, GlConfig};
@@ -62,12 +62,7 @@ impl FrameEnv {
 //
 
 pub fn skybox_view_matrix(rotation: &XrQuaternionf) -> XrMatrix4x4f {
-    let scale = XrVector3f::default_scale();
-    let view_matrix = xr_matrix4x4f_create_translation_rotation_scale(
-        &XrVector3f::default_translation(),
-        rotation,
-        &scale,
-    );
+    let view_matrix = xr_matrix4x4f_create_from_quaternion(rotation);
     xr_matrix4x4f_invert_rigid_body(&view_matrix)
 }
 
@@ -266,6 +261,7 @@ impl ActiveRenderer {
     }
 }
 
+#[allow(dead_code)]
 pub fn debug_string_matrix(matrix: &XrMatrix4x4f) -> String {
     let matrix = matrix.slice();
     format!(

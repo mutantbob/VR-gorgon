@@ -18,6 +18,7 @@ raw-window-handle = "0.5.2"
 itertools = "*"
 gl-thin = { path = "../../../../src/android-openxr-exp/gl-thin"}
 bob-shaders = { path = "../../../../src/android-openxr-exp/bob-shaders" }
+#once_cell = "*"
 
 [dependencies.openxr]
 features=["linked"]
@@ -51,3 +52,5 @@ categories = [
 [patch.crates-io]
 #openxr = { path = "../../../vendor/openxrs/openxr" }
 #openxr-sys = { path = "../../../vendor/openxrs/sys" }
+ndk= {path = "../../../../vendor/ndk/ndk"}
+ndk-sys= {path = "../../../../vendor/ndk/ndk-sys"}

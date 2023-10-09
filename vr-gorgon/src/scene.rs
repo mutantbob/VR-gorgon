@@ -1,3 +1,5 @@
+use crate::drawcore;
+use crate::gorgon1::Gorgon1;
 use crate::rainbow_triangle::{RainbowTriangle, Suzanne};
 use gl_thin::gl_fancy::GPUState;
 use gl_thin::gl_helper::{explode_if_gl_error, GLErrorWrapper};
@@ -16,7 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct MyScene {
     pub rainbow_triangle: RainbowTriangle<'static>,
     pub suzanne: Suzanne,
-    // pub text_message: TextMessage,
+    pub gorgon1: Gorgon1,
 }
 
 impl MyScene {
@@ -24,7 +26,7 @@ impl MyScene {
         Ok(MyScene {
             rainbow_triangle: RainbowTriangle::new(gpu_state)?,
             suzanne: Suzanne::new(gpu_state)?,
-            // text_message: TextMessage::new(gpu_state)?,
+            gorgon1: Gorgon1::new(gpu_state).unwrap_or_else(|e| panic!("blam {}", e)),
         })
     }
 
@@ -59,14 +61,11 @@ impl MyScene {
 
         //
 
+        let projection_matrix =
+            xr_matrix4x4f_create_projection_fov(GraphicsAPI::GraphicsOpenGL, fov, 0.01, 10_000.0);
+        //log::debug!("matrix = {}", debug_string_matrix(&projection_matrix),);
+
         let matrix_pv = {
-            let projection_matrix = xr_matrix4x4f_create_projection_fov(
-                GraphicsAPI::GraphicsOpenGL,
-                fov,
-                0.01,
-                10_000.0,
-            );
-            //log::debug!("matrix = {}", debug_string_matrix(&projection_matrix),);
             let view_matrix = xr_matrix4x4f_create_translation_rotation_scale(
                 translation,
                 rotation,
@@ -74,11 +73,14 @@ impl MyScene {
             );
             let inverse_view_matrix = xr_matrix4x4f_invert_rigid_body(&view_matrix);
 
-            xr_matrix4x4f_multiply(
-                //
-                &projection_matrix,   //
-                &inverse_view_matrix, //
-            )
+            xr_matrix4x4f_multiply(&projection_matrix, &inverse_view_matrix)
+        };
+
+        let skybox_pv = {
+            // let view_matrix = xr_matrix4x4f_create_from_quaternion(rotation);
+            // let inverse_view_matrix = xr_matrix4x4f_invert_rigid_body(&view_matrix);
+            let inverse_view_matrix = drawcore::skybox_view_matrix(rotation);
+            xr_matrix4x4f_multiply(&projection_matrix, &inverse_view_matrix)
         };
 
         {
@@ -127,6 +129,19 @@ impl MyScene {
                 .draw(&matrix, self.text_message.index_count(), gpu_state)
         }*/
 
+        let phase = {
+            let now = SystemTime::now();
+            let x = now
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|x| x.as_millis())
+                .unwrap_or(0);
+
+            let phase = x % 16000;
+            (phase as f32) / 16000.0
+        };
+
+        self.gorgon1.paint(&skybox_pv, phase, gpu_state)?;
+
         Ok(())
     }
 }
@@ -150,6 +165,7 @@ fn rotation_matrix_for_now() -> (f32, XrMatrix4x4f) {
     (theta, rotation_matrix)
 }
 
+#[allow(dead_code)]
 #[rustfmt::skip]
 pub fn matrix_rotation_about_z(theta: f32) -> XrMatrix4x4f {
     [
