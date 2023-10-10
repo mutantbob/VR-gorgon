@@ -1,2 +1,4 @@
 target
 *.iml
+*~
+vr-gorgon/app/src/main/jniLibs/**/*.so
