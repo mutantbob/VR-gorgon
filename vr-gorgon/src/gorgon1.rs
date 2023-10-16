@@ -25,15 +25,45 @@ static INDICES: &[u8] = &[
     2, 3, 7, 2, 7, 6, // ceiling
 ];
 
+#[derive(Copy, Clone)]
+pub enum GorgonSelector {
+    Spiral,
+    SphereAxes,
+    TwoCircles,
+}
+
+impl GorgonSelector {
+    pub fn next(&mut self) {
+        *self = match self {
+            GorgonSelector::Spiral => GorgonSelector::SphereAxes,
+            GorgonSelector::SphereAxes => GorgonSelector::TwoCircles,
+            GorgonSelector::TwoCircles => GorgonSelector::Spiral,
+        }
+    }
+}
+
+//
+
 pub struct Gorgon1 {
     pub program: GorgonShader1,
     pub buffers: VertexBufferBundle<'static, GLfloat, u8>,
     pub indices_len: usize,
+
+    selector: GorgonSelector,
+}
+
+impl Gorgon1 {
+    pub(crate) fn next_gorgon(&mut self) -> Result<(), GLErrorWrapper> {
+        self.selector.next();
+        self.program = GorgonShader1::new(self.selector)?;
+        Ok(())
+    }
 }
 
 impl Gorgon1 {
     pub fn new(gpu_state: &mut GPUState) -> Result<Self, GLErrorWrapper> {
-        let program = GorgonShader1::new()?;
+        let selector = GorgonSelector::Spiral;
+        let program = GorgonShader1::new(selector)?;
 
         program.program.use_()?;
 
@@ -50,13 +80,14 @@ impl Gorgon1 {
             buffers,
             indices_len,
             program,
+            selector,
         };
 
         Ok(rval)
     }
 
     /// # parameters
-    /// `phase` - should be a floating point number from \[0..64)
+    /// `phase` - should be a floating point number from \[0..1.0)
     pub fn paint(
         &self,
         matrix: &XrMatrix4x4f,
@@ -86,7 +117,7 @@ pub struct GorgonShader1 {
 }
 
 impl GorgonShader1 {
-    pub fn new() -> Result<Self, GLErrorWrapper> {
+    pub fn new(selector: GorgonSelector) -> Result<Self, GLErrorWrapper> {
         const VERTEX_SHADER: &str = "
 uniform mat4 matrix;
 
@@ -99,10 +130,10 @@ void main() {
     ray = position;
 }
             ";
-        let fragment_shader = match 2 {
-            1 => gorgon_sphere_axes(),
-            2 => gorgon_spiral(),
-            _ => gorgon_two_circles(),
+        let fragment_shader = match selector {
+            GorgonSelector::SphereAxes => gorgon_sphere_axes(),
+            GorgonSelector::Spiral => gorgon_spiral(),
+            GorgonSelector::TwoCircles => gorgon_two_circles(),
         };
         let program = Program::compile(VERTEX_SHADER, fragment_shader)?;
         let sul_matrix = program.get_uniform_location("matrix")?;
@@ -132,10 +163,10 @@ uniform float phase;
 
 void main() {
 float d1 = distance(ray.xy, vec2(1,0));
-float a = floor( mod(d1*4.0 + phase/16.0, 2.0));
+float a = floor( mod(d1*4.0 + phase*4.0, 2.0));
 
 float d2 = distance(ray.xy, vec2(-1,0));
-float b = floor( mod(d2*5.0 + phase*6.0/64.0, 2.0));
+float b = floor( mod(d2*5.0 + phase*6.0, 2.0));
 
 float g;
 if (a!=b) {

@@ -112,7 +112,7 @@ static KLUDGE: OnceCell<()> = OnceCell::new();
 //#[cfg(target_os = "android")]
 #[no_mangle]
 fn android_main(android_app: AndroidApp) {
-    std::env::set_var("RUST_BACKTRACE", "1");
+    std::env::set_var("RUST_BACKTRACE", "full");
 
     android_logger::init_once(
         android_logger::Config::default().with_max_level(log::LevelFilter::Trace),

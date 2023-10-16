@@ -1,7 +1,8 @@
 use gl_thin::errors::{Wrappable, XrErrorWrapped};
 use gl_thin::openxr_helpers::Backend;
 use openxr::{
-    Action, ActionSet, ActiveActionSet, Binding, Instance, Session, Space, SpaceLocation,
+    Action, ActionSet, ActionState, ActiveActionSet, Binding, Instance, Session, Space,
+    SpaceLocation,
 };
 use openxr_sys::{Path, Posef, Time};
 
@@ -10,6 +11,7 @@ pub struct XrInputs {
     pub user_hand_right: Path,
     pub controller_1: Action<Posef>,
     pub controller_space_1: Space,
+    pub a_click: Action<bool>,
 }
 
 impl XrInputs {
@@ -20,12 +22,8 @@ impl XrInputs {
 
         //
 
-        let user_hand_left = instance
-            .string_to_path("/user/hand/left")
-            .annotate_if_err(Some(instance), "failed to ")?;
-        let user_hand_right = instance
-            .string_to_path("/user/hand/right")
-            .annotate_if_err(Some(instance), "failed to ")?;
+        let user_hand_left = Self::path_for(instance, "/user/hand/left")?;
+        let user_hand_right = Self::path_for(instance, "/user/hand/right")?;
         let pose_action = action_set
             .create_action::<Posef>(
                 "hand_pose",
@@ -33,20 +31,22 @@ impl XrInputs {
                 &[user_hand_left, user_hand_right],
             )
             .annotate_if_err(Some(instance), "failed to ")?;
-        let left_grip_pose = instance
-            .string_to_path("/user/hand/left/input/grip/pose")
-            .annotate_if_err(Some(instance), "failed to ")?;
-        let right_grip_pose = instance
-            .string_to_path("/user/hand/right/input/grip/pose")
-            .annotate_if_err(Some(instance), "failed to ")?;
-        let bindings = [
-            Binding::new(&pose_action, left_grip_pose),
-            Binding::new(&pose_action, right_grip_pose),
-        ];
+        let left_grip_pose = Self::path_for(instance, "/user/hand/left/input/grip/pose")?;
+        let right_grip_pose = Self::path_for(instance, "/user/hand/right/input/grip/pose")?;
+
+        let right_a_click = Self::path_for(instance, "/user/hand/right/input/a/click")?;
+        let a_click_action = action_set
+            .create_action("a_click", "A click", &[user_hand_right])
+            .annotate_if_err(Some(instance), "failed to create action A click")?;
+
         {
-            let interaction_profile = instance
-                .string_to_path("/interaction_profiles/khr/simple_controller")
-                .annotate_if_err(Some(instance), "failed to ")?;
+            let bindings = [
+                Binding::new(&pose_action, left_grip_pose),
+                Binding::new(&pose_action, right_grip_pose),
+                // Binding::new(&a_click_action, right_a_click),
+            ];
+            let interaction_profile =
+                Self::path_for(instance, "/interaction_profiles/khr/simple_controller")?;
 
             instance
                 .suggest_interaction_profile_bindings(interaction_profile, &bindings)
@@ -54,9 +54,13 @@ impl XrInputs {
         }
 
         {
-            let interaction_profile = instance
-                .string_to_path("/interaction_profiles/oculus/touch_controller")
-                .annotate_if_err(Some(instance), "failed to ")?;
+            let bindings = [
+                Binding::new(&pose_action, left_grip_pose),
+                Binding::new(&pose_action, right_grip_pose),
+                Binding::new(&a_click_action, right_a_click),
+            ];
+            let interaction_profile =
+                Self::path_for(instance, "/interaction_profiles/oculus/touch_controller")?;
             instance
                 .suggest_interaction_profile_bindings(interaction_profile, &bindings)
                 .annotate_if_err(Some(instance), "failed to ")?;
@@ -79,7 +83,15 @@ impl XrInputs {
             user_hand_right,
             controller_1: pose_action,
             controller_space_1,
+            a_click: a_click_action,
         })
+    }
+
+    fn path_for(instance: &Instance, path: &str) -> Result<Path, XrErrorWrapped> {
+        instance.string_to_path(path).annotate_if_err(
+            Some(instance),
+            format!("failed to convert '{}' to path", path),
+        )
     }
 
     pub fn sync_actions(&self, xr_session: &Session<Backend>) -> openxr::Result<()> {
@@ -109,5 +121,9 @@ impl XrInputs {
         } else {
             None
         }
+    }
+
+    pub fn a_clicked<G>(&self, xr_session: &Session<G>) -> openxr::Result<ActionState<bool>> {
+        self.a_click.state(xr_session, self.user_hand_right)
     }
 }

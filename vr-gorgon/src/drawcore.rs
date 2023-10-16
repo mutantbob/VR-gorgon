@@ -192,8 +192,18 @@ impl ActiveRenderer {
         type Arg<'a> = (Option<SpaceLocation>, &'a mut GPUState);
         let gpu_state = &mut self.gpu_state;
 
+        self.inputs.sync_actions(&self.openxr.xr_session).unwrap();
+
+        if let Ok(action) = self.inputs.a_clicked(&self.openxr.xr_session) {
+            if action.changed_since_last_sync && action.current_state {
+                if let Err(e) = self.scene.gorgon1.next_gorgon() {
+                    log::error!("malfunction instantiating gorgon {}", e);
+                }
+            }
+        }
+
         let before_paint = |openxr: &OpenXRComponent, frame_state: &openxr::FrameState| {
-            self.inputs.sync_actions(&openxr.xr_session).unwrap();
+            // self.inputs.sync_actions(&openxr.xr_session).unwrap();
 
             let location = self.inputs.controller_1_locate_if_active(
                 &openxr.xr_session,
