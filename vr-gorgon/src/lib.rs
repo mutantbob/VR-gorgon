@@ -1,6 +1,9 @@
 use android_activity::AndroidApp;
 use drawcore::ActiveRenderer;
 use gl_thin::gl_helper::initialize_gl_using_egli;
+use jni::objects::JObject;
+use jni::JavaVM;
+use once_cell::sync::OnceCell;
 use std::ops::Add;
 use std::time::{Duration, Instant};
 use winit::event::{Event, WindowEvent};
@@ -104,6 +107,8 @@ fn event_loop_one_pass<T: Drawable, X: std::fmt::Debug, E: std::fmt::Debug>(
     }
 }
 
+static KLUDGE: OnceCell<()> = OnceCell::new();
+
 //#[cfg(target_os = "android")]
 #[no_mangle]
 fn android_main(android_app: AndroidApp) {
@@ -115,6 +120,10 @@ fn android_main(android_app: AndroidApp) {
 
     log::debug!("bob test");
 
+    if KLUDGE.set(()).is_err() {
+        log::error!("android_main() called more than once. calling Activity.finish() to avoid EventLoop panic!");
+        activity_finish(&android_app).unwrap();
+    }
     let mut builder: //winit::event_loop::
         EventLoopBuilder<_> = EventLoopBuilder::new();
     let event_loop: EventLoop<()> = builder.with_android_app(android_app).build();
@@ -129,4 +138,15 @@ fn android_main(android_app: AndroidApp) {
             ActiveRenderer::new(event_loop)
         })
     });
+}
+
+fn activity_finish(android_app: &AndroidApp) -> Result<(), jni::errors::Error> {
+    let vm = unsafe { JavaVM::from_raw(android_app.vm_as_ptr() as *mut _) }?;
+    let mut jvm = vm.attach_current_thread()?;
+    let activity = android_app.activity_as_ptr();
+    let activity = unsafe { JObject::from_raw(activity as *mut _) };
+    jvm.call_method(activity, "finish", "()V", &[])?;
+    log::info!(" exception check {:?}", jvm.exception_check());
+
+    Ok(())
 }

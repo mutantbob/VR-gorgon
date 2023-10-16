@@ -18,7 +18,8 @@ raw-window-handle = "0.5.2"
 itertools = "*"
 gl-thin = { path = "../../../../src/android-openxr-exp/gl-thin"}
 bob-shaders = { path = "../../../../src/android-openxr-exp/bob-shaders" }
-#once_cell = "*"
+ once_cell = "*"
+jni="*"
 
 [dependencies.openxr]
 features=["linked"]
