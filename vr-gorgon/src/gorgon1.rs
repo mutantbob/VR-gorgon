@@ -99,8 +99,9 @@ void main() {
     ray = position;
 }
             ";
-        let fragment_shader = match 1 {
+        let fragment_shader = match 2 {
             1 => gorgon_sphere_axes(),
+            2 => gorgon_spiral(),
             _ => gorgon_two_circles(),
         };
         let program = Program::compile(VERTEX_SHADER, fragment_shader)?;
@@ -150,4 +151,8 @@ gl_FragColor = vec4(g,g,g, 1.0);
 
 pub fn gorgon_sphere_axes() -> &'static str {
     include_str!("gorgon-sphere-axes.glsl")
+}
+
+pub fn gorgon_spiral() -> &'static str {
+    include_str!("gorgon-spiral.glsl")
 }
