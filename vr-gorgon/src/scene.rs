@@ -1,13 +1,16 @@
+use crate::control_panel::ControlPanel;
 use crate::drawcore;
 use crate::gorgon1::Gorgon1;
-use crate::rainbow_triangle::{RainbowTriangle, Suzanne};
+use crate::rainbow_triangle::RainbowTriangle;
+use crate::suzanne::Suzanne;
 use gl_thin::gl_fancy::GPUState;
 use gl_thin::gl_helper::{explode_if_gl_error, GLErrorWrapper};
 use gl_thin::linear::{
     xr_matrix4x4f_create_from_quaternion, xr_matrix4x4f_create_projection_fov,
     xr_matrix4x4f_create_scale, xr_matrix4x4f_create_translation,
     xr_matrix4x4f_create_translation_rotation_scale, xr_matrix4x4f_create_translation_v,
-    xr_matrix4x4f_invert_rigid_body, GraphicsAPI, XrFovf, XrMatrix4x4f, XrQuaternionf, XrVector3f,
+    xr_matrix4x4f_invert_rigid_body, xr_matrix4x4f_uniform_scale, GraphicsAPI, XrFovf,
+    XrMatrix4x4f, XrQuaternionf, XrVector3f,
 };
 use openxr::SpaceLocation;
 use openxr_sys::Time;
@@ -18,6 +21,7 @@ pub struct MyScene {
     pub rainbow_triangle: RainbowTriangle<'static>,
     pub suzanne: Suzanne,
     pub gorgon1: Gorgon1,
+    pub controls: ControlPanel,
 }
 
 impl MyScene {
@@ -25,7 +29,8 @@ impl MyScene {
         Ok(MyScene {
             rainbow_triangle: RainbowTriangle::new(gpu_state)?,
             suzanne: Suzanne::new(gpu_state)?,
-            gorgon1: Gorgon1::new(gpu_state).unwrap_or_else(|e| panic!("blam {}", e)),
+            gorgon1: Gorgon1::new(gpu_state)?,
+            controls: ControlPanel::new(gpu_state)?,
         })
     }
 
@@ -80,6 +85,28 @@ impl MyScene {
             projection_matrix * inverse_view_matrix
         };
 
+        //
+
+        let phase = {
+            let now = SystemTime::now();
+            let x = now
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|x| x.as_millis())
+                .unwrap_or(0);
+
+            let phase = x % 16000;
+            (phase as f32) / 16000.0
+        };
+
+        self.gorgon1.paint(&skybox_pv, phase, gpu_state)?;
+
+        //
+
+        unsafe { gl::Clear(gl::DEPTH_BUFFER_BIT) };
+        explode_if_gl_error()?;
+
+        //
+
         {
             let model = xr_matrix4x4f_create_translation(1.0, 0.0, -2.0);
             let model = model * rotation_matrix;
@@ -96,19 +123,30 @@ impl MyScene {
                     xr_matrix4x4f_create_from_quaternion(&controller_1.pose.orientation.into());
                 let scale1 = 0.05;
                 let scale = xr_matrix4x4f_create_scale(scale1, scale1, scale1);
-                let model = scale;
-                let model = upright * model;
-                let model = rotation_matrix * model;
-                translate * model
+                translate * (rotation_matrix * (upright * scale))
             };
-            let matrix = matrix_pv * model;
             self.suzanne.draw(
-                &matrix,
+                &model,
+                &matrix_pv,
                 &[0.0, 1.0, 0.0],
                 &[0.0, 0.0, 1.0],
                 self.suzanne.index_count(),
                 gpu_state,
             )?;
+
+            let model = {
+                let r1 = rotate_x2(0.0, 1.0);
+                let s1 = xr_matrix4x4f_uniform_scale(0.1);
+                let t1 = xr_matrix4x4f_create_translation(0.0, 0.1, 0.0);
+
+                let translate =
+                    xr_matrix4x4f_create_translation_v(&controller_1.pose.position.into());
+                let rotation_matrix =
+                    xr_matrix4x4f_create_from_quaternion(&controller_1.pose.orientation.into());
+                translate * rotation_matrix * t1 * r1 * s1
+            };
+
+            self.controls.draw(&(matrix_pv * model), gpu_state)?;
         }
 
         /* {
@@ -125,19 +163,6 @@ impl MyScene {
             self.text_message
                 .draw(&matrix, self.text_message.index_count(), gpu_state)
         }*/
-
-        let phase = {
-            let now = SystemTime::now();
-            let x = now
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map(|x| x.as_millis())
-                .unwrap_or(0);
-
-            let phase = x % 16000;
-            (phase as f32) / 16000.0
-        };
-
-        self.gorgon1.paint(&skybox_pv, phase, gpu_state)?;
 
         Ok(())
     }
@@ -165,30 +190,46 @@ fn rotation_matrix_for_now() -> (f32, XrMatrix4x4f) {
 #[allow(dead_code)]
 #[rustfmt::skip]
 pub fn matrix_rotation_about_z(theta: f32) -> XrMatrix4x4f {
+    rotate_z2(theta.cos(), theta.sin())
+}
+
+#[rustfmt::skip]
+pub fn rotate_z2(cos: f32, sin: f32) -> XrMatrix4x4f {
     [
-        theta.cos(), theta.sin(), 0.0, 0.0, //
-        -theta.sin(), theta.cos(), 0.0, 0.0, //
+        cos, sin, 0.0, 0.0, //
+        -sin, cos, 0.0, 0.0, //
         0.0, 0.0, 1.0, 0.0, //
         0.0, 0.0, 0.0, 1.0f32,
-    ].into()
+    ]
+    .into()
 }
 
-#[rustfmt::skip]
 pub fn matrix_rotation_about_y(theta: f32) -> XrMatrix4x4f {
-    [
-        theta.cos(), 0.0, theta.sin(), 0.0, //
-        0.0, 1.0, 0.0, 0.0, //
-        -theta.sin(), 0.0, theta.cos(), 0.0, //
-        0.0, 0.0, 0.0, 1.0f32,
-    ].into()
+    rotate_y2(theta.cos(), theta.sin())
 }
 
 #[rustfmt::skip]
+pub fn rotate_y2(cos: f32, sin: f32) -> XrMatrix4x4f {
+    [
+        cos, 0.0, sin, 0.0, //
+        0.0, 1.0, 0.0, 0.0, //
+        -sin, 0.0, cos, 0.0, //
+        0.0, 0.0, 0.0, 1.0f32,
+    ]
+    .into()
+}
+
 pub fn matrix_rotation_about_x(theta: f32) -> XrMatrix4x4f {
+    rotate_x2(theta.cos(), theta.sin())
+}
+
+#[rustfmt::skip]
+pub fn rotate_x2(cos: f32, sin: f32) -> XrMatrix4x4f {
     [
         1.0, 0.0, 0.0, 0.0,
-        0.0, theta.cos(), theta.sin(), 0.0,
-        0.0, -theta.sin(), theta.cos(), 0.0,
+        0.0, cos, sin, 0.0,
+        0.0, -sin, cos, 0.0,
         0.0, 0.0, 0.0, 1.0f32,
-    ].into()
+    ]
+    .into()
 }

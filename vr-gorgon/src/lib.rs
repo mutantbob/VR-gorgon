@@ -10,11 +10,15 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopWindowTarget};
 use winit::platform::android::EventLoopBuilderExtAndroid;
 
+mod control_panel;
 mod drawcore;
 mod gorgon1;
 mod rainbow_triangle;
 mod scene;
+mod shaders;
 mod suzanne;
+mod suzanne_geometry;
+mod text_painting;
 mod xr_input;
 
 pub trait Drawable {
