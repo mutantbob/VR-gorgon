@@ -1,3 +1,4 @@
+use crate::control_panel::SpriteLocation;
 use gl::types::{GLfloat, GLsizei, GLuint};
 use gl_thin::gl_fancy::{ActiveTextureUnit, GPUState, VertexBufferBundle};
 use gl_thin::gl_helper::{GLBufferType, GLErrorWrapper, Program, Texture};
@@ -20,6 +21,7 @@ void main() {
 "
 }
 
+/// draw a set of concentric rings into a unit UV square
 pub struct ConcentricRings {
     program: Program,
     pub sul_matrix: GLuint,
@@ -48,7 +50,7 @@ varying vec2 tex_coord;
 void main()
 {
     float d1 = distance(vec2(0.5,0.5), tex_coord) ;
-    float a = d1> 0.5 ? 0.0 : 1.0;
+    float a = d1>= 0.5 ? 0.0 : 1.0;
     bool b = 0.5 > mod(d1*6.0,1.0);
     float g = b ? 1.0 : 0.0;
     gl_FragColor = vec4(g,g,g,a);
@@ -86,6 +88,7 @@ void main()
 
 //
 
+/// draw a hemisphere with latitude-based pie slices
 pub struct Latitude {
     program: Program,
     pub sul_matrix: GLuint,
@@ -145,6 +148,7 @@ void main() {
 
 //
 
+/// Lati-two-d : draw a hemisphere with U coordinate based stripes.
 pub struct Latitwod {
     program: Program,
     pub sul_matrix: GLuint,
@@ -203,6 +207,7 @@ void main() {
 
 //
 
+/// Shader to draw a subset (based on `scale` and `offset`) of a sprite sheet into a unit UV ([0..1]) square.
 pub struct SpriteRect {
     program: Program,
     pub sal_position: GLuint,
@@ -308,6 +313,89 @@ void main() {
 
         gpu_state.set_active_texture(texture_unit)?;
         texture.bind(gl::TEXTURE_2D)?;
+
+        let n_indices = buffers.index_count;
+        let bound = buffers.bind(gpu_state)?;
+        bound.draw_elements(gl::TRIANGLE_STRIP, n_indices as GLsizei, 0)?;
+        Ok(())
+    }
+
+    pub fn draw2(
+        &self,
+        matrix: &XrMatrix4x4f,
+        sprite: SpriteLocation,
+        buffers: &VertexBufferBundle<GLfloat, u8>,
+        gpu_state: &mut GPUState,
+    ) -> Result<(), GLErrorWrapper> {
+        self.draw(
+            matrix,
+            sprite.scale(),
+            sprite.offset(),
+            sprite.texture,
+            buffers,
+            gpu_state,
+        )
+    }
+}
+
+//
+
+/// draw a square "ring" (used to highlight entries in the control panel)
+pub struct BoxOutline {
+    program: Program,
+    pub sul_matrix: GLuint,
+    pub sal_position: GLuint,
+    pub sal_uv: GLuint,
+}
+
+impl BoxOutline {
+    pub fn new() -> Result<Self, GLErrorWrapper> {
+        let program = Program::compile(vertex_shader(), Self::fragment_shader())?;
+        let sul_matrix = program.get_uniform_location("matrix")?;
+        let sal_position = program.get_attribute_location("position")?;
+        let sal_uv = program.get_attribute_location("uv")?;
+        Ok(Self {
+            program,
+            sul_matrix,
+            sal_position,
+            sal_uv,
+        })
+    }
+
+    pub fn fragment_shader() -> &'static str {
+        "
+precision mediump float;
+varying vec2 tex_coord;
+void main()
+{
+    float thick = 0.06;
+    bool b = tex_coord.x >thick && tex_coord.x + thick < 1.0 && tex_coord.y > thick && tex_coord.y+thick < 1.0;
+    float g = b ? 0.0 : 1.0;
+    gl_FragColor = vec4(g,g,g,g);
+}
+"
+    }
+
+    /// use this with [VertexBufferBundle::new]
+    pub fn attributes_tuples(&self, position_len: i32) -> [(GLuint, i32, i32); 2] {
+        [
+            (self.sal_position, position_len, 0),
+            (self.sal_uv, 2, position_len),
+        ]
+    }
+
+    pub fn set_parameters(&self, matrix: &XrMatrix4x4f) -> Result<(), GLErrorWrapper> {
+        self.program.set_mat4u(self.sul_matrix as _, &matrix.m)
+    }
+
+    pub fn draw<IT: GLBufferType>(
+        &self,
+        matrix: &XrMatrix4x4f,
+        buffers: &VertexBufferBundle<GLfloat, IT>,
+        gpu_state: &mut GPUState,
+    ) -> Result<(), GLErrorWrapper> {
+        self.program.use_()?;
+        self.set_parameters(matrix)?;
 
         let n_indices = buffers.index_count;
         let bound = buffers.bind(gpu_state)?;

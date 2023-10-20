@@ -137,7 +137,7 @@ impl MyScene {
             let model = {
                 let r1 = rotate_x2(0.0, 1.0);
                 let s1 = xr_matrix4x4f_uniform_scale(0.1);
-                let t1 = xr_matrix4x4f_create_translation(0.0, 0.1, 0.0);
+                let t1 = xr_matrix4x4f_create_translation(0.0, 0.0, -0.2);
 
                 let translate =
                     xr_matrix4x4f_create_translation_v(&controller_1.pose.position.into());

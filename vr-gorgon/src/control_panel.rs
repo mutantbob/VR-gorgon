@@ -1,6 +1,6 @@
-use crate::shaders::{ConcentricRings, Latitude, Latitwod, SpriteRect};
-use crate::text_painting::{render_glyphs_to_image, text_to_greyscale_texture};
-use gl::types::{GLfloat, GLuint};
+use crate::shaders::{BoxOutline, ConcentricRings, Latitude, Latitwod, SpriteRect};
+use crate::text_painting::render_glyphs_to_image;
+use gl::types::{GLfloat, GLsizei, GLuint};
 use gl_thin::gl_fancy::{GPUState, VertexBufferBundle};
 use gl_thin::gl_helper::{GLErrorWrapper, Texture};
 use gl_thin::linear::{
@@ -36,15 +36,15 @@ pub struct ControlPanel {
     latitude: Latitude,
     latitwod: Latitwod,
     square: VertexBufferBundle<'static, GLfloat, u8>,
-    sprites: Texture,
+    sprites: SpriteSheet,
+    ring: BoxOutline,
+    cursor: CPCursor,
 }
 
 impl ControlPanel {
     pub fn new(gpu_state: &mut GPUState) -> Result<Self, GLErrorWrapper> {
         let c_rings = ConcentricRings::new()?;
         let square = fab_uv_square(gpu_state, &c_rings.attributes_tuples(2))?;
-        let font = Font::try_from_bytes(include_bytes!("AlbertText-Bold.ttf")).unwrap();
-        let sprites = Self::make_sprite_sheet(&font)?;
         let sprite = SpriteRect::new()?;
         let latitude = Latitude::new()?;
 
@@ -53,48 +53,11 @@ impl ControlPanel {
             latitude,
             latitwod: Latitwod::new()?,
             square,
-            sprites,
+            sprites: SpriteSheet::new()?,
             sprite,
+            ring: BoxOutline::new()?,
+            cursor: CPCursor::default(),
         })
-    }
-
-    fn make_sprite_sheet(font: &Font) -> Result<Texture, GLErrorWrapper> {
-        let width = 128;
-        let height = 128;
-        let mut img = RgbImage::new(width as _, height as _);
-        let font_size = 30.0;
-        let scale = Scale {
-            x: font_size,
-            y: font_size,
-        };
-
-        let ascent = font.v_metrics(scale).ascent;
-
-        paint_text_in_image(font, &mut img, scale, point(0.0, ascent), "x");
-        paint_text_in_image(font, &mut img, scale, point(32.0, ascent), "y");
-        paint_text_in_image(font, &mut img, scale, point(64.0, ascent), "z");
-
-        // let (width, height) = target.get_dimensions()?;
-        let mut target = Texture::new()?;
-
-        if true {
-            log::debug!(
-                "text pixels {:?} .. {:?}",
-                img.as_raw().iter().min(),
-                img.as_raw().iter().max()
-            );
-        }
-
-        target.write_pixels_and_generate_mipmap(
-            gl::TEXTURE_2D,
-            0,
-            gl::RGB as _,
-            width,
-            height,
-            gl::RGB,
-            img.as_raw(),
-        )?;
-        Ok(target)
     }
 
     pub fn draw(
@@ -102,9 +65,29 @@ impl ControlPanel {
         matrix: &XrMatrix4x4f,
         gpu_state: &mut GPUState,
     ) -> Result<(), GLErrorWrapper> {
-        self.header_1(matrix, gpu_state, -0.75)?;
-        self.header_2(matrix, gpu_state, -0.25)?;
-        self.header_3(matrix, gpu_state, 0.75)?;
+        if false {
+            self.sprite.draw(
+                matrix,
+                &[1.0; 2],
+                &[0.0; 2],
+                &self.sprites.texture,
+                &self.square,
+                gpu_state,
+            )?;
+        } else {
+            self.header_1(matrix, gpu_state, -0.75)?;
+            self.header_2(matrix, gpu_state, -0.25)?;
+            self.header_3(matrix, gpu_state, 0.75)?;
+
+            {
+                let dx = 0.25;
+                let dy = -0.25;
+                let m2 = matrix
+                    * xr_matrix4x4f_create_translation(dx, dy, -0.02)
+                    * xr_matrix4x4f_uniform_scale(0.25);
+                self.ring.draw(&m2, &self.square, gpu_state)?;
+            }
+        }
         Ok(())
     }
 
@@ -125,40 +108,22 @@ impl ControlPanel {
             let m2 = matrix
                 * xr_matrix4x4f_create_translation(-0.25, dy, -0.01)
                 * xr_matrix4x4f_uniform_scale(0.25);
-            self.sprite.draw(
-                &m2,
-                &[0.25; 2],
-                &[-0.1, 0.0],
-                &self.sprites,
-                &self.square,
-                gpu_state,
-            )?;
+            self.sprite
+                .draw2(&m2, self.sprites.x(), &self.square, gpu_state)?;
         }
         {
             let m2 = matrix
                 * xr_matrix4x4f_create_translation(0.25, dy, -0.01)
                 * xr_matrix4x4f_uniform_scale(0.25);
-            self.sprite.draw(
-                &m2,
-                &[0.25; 2],
-                &[0.15, 0.0],
-                &self.sprites,
-                &self.square,
-                gpu_state,
-            )?;
+            self.sprite
+                .draw2(&m2, self.sprites.y(), &self.square, gpu_state)?;
         }
         {
             let m2 = matrix
                 * xr_matrix4x4f_create_translation(0.75, dy, -0.01)
                 * xr_matrix4x4f_uniform_scale(0.25);
-            self.sprite.draw(
-                &m2,
-                &[0.25; 2],
-                &[0.40, 0.0],
-                &self.sprites,
-                &self.square,
-                gpu_state,
-            )?;
+            self.sprite
+                .draw2(&m2, self.sprites.z(), &self.square, gpu_state)?;
         };
         Ok(())
     }
@@ -184,7 +149,7 @@ impl ControlPanel {
                 &m2,
                 &[0.75, 0.25],
                 &[-0.1, 0.0],
-                &self.sprites,
+                &self.sprites.texture,
                 &self.square,
                 gpu_state,
             )?;
@@ -213,7 +178,7 @@ impl ControlPanel {
                 &m2,
                 &[0.75, 0.25],
                 &[-0.1, 0.0],
-                &self.sprites,
+                &self.sprites.texture,
                 &self.square,
                 gpu_state,
             )?;
@@ -222,14 +187,150 @@ impl ControlPanel {
     }
 }
 
+//
+
+#[derive(Default)]
+pub enum GorgonShape {
+    #[default]
+    Spiral,
+    Latitude,
+    Cartesian,
+}
+
+#[derive(Default)]
+pub enum GorgonAxis {
+    #[default]
+    X,
+    Y,
+    Z,
+}
+
+#[derive(Default)]
+pub enum GorgonParam {
+    #[default]
+    Enable,
+    Frequency,
+    Speed,
+    Amplitude,
+    Curl,
+}
+
+#[derive(Default)]
+pub struct CPCursor {
+    row: GorgonShape,
+    axis: GorgonAxis,
+    subrow: GorgonParam,
+}
+
+//
+
 fn paint_text_in_image(
     font: &Font,
-    mut img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>,
-    scale: Scale,
+    img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>,
+    scale: f32,
     offset: Point<f32>,
     msg: &str,
 ) {
-    let glyphs: Vec<_> = font.layout(msg, scale, offset).collect();
+    let glyphs: Vec<_> = font.layout(msg, Scale::uniform(scale), offset).collect();
 
-    render_glyphs_to_image(&glyphs, &mut img);
+    render_glyphs_to_image(&glyphs, img);
+}
+
+//
+
+pub struct SpriteLocation<'a> {
+    pub scale: [f32; 2],
+    pub offset: [f32; 2],
+    pub texture: &'a Texture,
+}
+
+impl<'a> SpriteLocation<'a> {
+    fn new(scale: [f32; 2], offset: [f32; 2], texture: &'a Texture) -> Self {
+        Self {
+            scale,
+            offset,
+            texture,
+        }
+    }
+
+    pub fn scale(&self) -> &[f32; 2] {
+        &self.scale
+    }
+
+    pub fn offset(&self) -> &[f32; 2] {
+        &self.offset
+    }
+}
+
+//
+
+pub struct SpriteSheet {
+    pub texture: Texture,
+}
+
+impl SpriteSheet {
+    pub fn new() -> Result<Self, GLErrorWrapper> {
+        let font = Font::try_from_bytes(include_bytes!("AlbertText-Bold.ttf")).unwrap();
+
+        let width: GLsizei = 256;
+        let height = 256;
+        let mut img = RgbImage::new(width as _, height as _);
+        let font_size = 60.0;
+
+        let m1 = font.v_metrics(Scale::uniform(font_size));
+        let ascent = m1.ascent;
+
+        for (i, msg) in ["x", "y", "z"].iter().enumerate() {
+            paint_text_in_image(
+                &font,
+                &mut img,
+                font_size,
+                point((width * i as GLsizei) as f32 / 4.0, ascent),
+                msg,
+            );
+        }
+
+        let small_font = 30.0;
+        let m2 = font.v_metrics(Scale::uniform(small_font));
+
+        for (i, msg) in ["freq", "speed", "amplitude", "curl"].iter().enumerate() {
+            let y2 =
+                height as f32 / 4.0 + 1.0 + m2.ascent + i as f32 * 1.5 * (m2.ascent + m2.descent);
+            paint_text_in_image(&font, &mut img, small_font, point(0.0, y2), msg);
+        }
+
+        // let (width, height) = target.get_dimensions()?;
+        let mut target = Texture::new()?;
+
+        if true {
+            log::debug!(
+                "text pixels {:?} .. {:?}",
+                img.as_raw().iter().min(),
+                img.as_raw().iter().max()
+            );
+        }
+
+        target.write_pixels_and_generate_mipmap(
+            gl::TEXTURE_2D,
+            0,
+            gl::RGB as _,
+            width,
+            height,
+            gl::RGB,
+            img.as_raw(),
+        )?;
+        Ok(Self { texture: target })
+    }
+
+    pub fn x(&self) -> SpriteLocation<'_> {
+        SpriteLocation::new([0.25; 2], [-0.1, 0.0], &self.texture)
+    }
+
+    pub fn y(&self) -> SpriteLocation {
+        SpriteLocation::new([0.25; 2], [0.15, 0.0], &self.texture)
+    }
+
+    pub fn z(&self) -> SpriteLocation {
+        SpriteLocation::new([0.25; 2], [0.40, 0.0], &self.texture)
+    }
 }
