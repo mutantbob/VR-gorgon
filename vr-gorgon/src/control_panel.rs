@@ -1,5 +1,6 @@
 use crate::shaders::{BoxOutline, ConcentricRings, Latitude, Latitwod, SpriteRect};
 use crate::text_painting::render_glyphs_to_image;
+use crate::thumbstick_smoother::ThumbstickSmoother;
 use gl::types::{GLfloat, GLsizei, GLuint};
 use gl_thin::gl_fancy::{GPUState, VertexBufferBundle};
 use gl_thin::gl_helper::{GLErrorWrapper, Texture};
@@ -8,7 +9,9 @@ use gl_thin::linear::{
     XrMatrix4x4f,
 };
 use image::{ImageBuffer, Rgb, RgbImage};
+use openxr_sys::Vector2f;
 use rusttype::{point, Font, Point, Scale};
+use std::cmp::Ordering;
 
 pub fn fab_uv_square(
     gpu_state: &mut GPUState,
@@ -39,6 +42,9 @@ pub struct ControlPanel {
     sprites: SpriteSheet,
     ring: BoxOutline,
     cursor: CPCursor,
+
+    thumbstick_x_smoother: ThumbstickSmoother,
+    thumbstick_y_smoother: ThumbstickSmoother,
 }
 
 impl ControlPanel {
@@ -57,6 +63,8 @@ impl ControlPanel {
             sprite,
             ring: BoxOutline::new()?,
             cursor: CPCursor::default(),
+            thumbstick_x_smoother: Default::default(),
+            thumbstick_y_smoother: Default::default(),
         })
     }
 
@@ -80,8 +88,17 @@ impl ControlPanel {
             self.header_3(matrix, gpu_state, 0.75)?;
 
             {
-                let dx = 0.25;
-                let dy = -0.25;
+                let dx = match self.cursor.axis {
+                    GorgonAxis::Y => 0.25,
+                    GorgonAxis::Z => 0.75,
+                    GorgonAxis::X => -0.25,
+                };
+                let dy = match self.cursor.row {
+                    // -0.25
+                    GorgonShape::Spiral => -0.75,
+                    GorgonShape::Latitude => -0.25,
+                    GorgonShape::Cartesian => 0.75,
+                };
                 let m2 = matrix
                     * xr_matrix4x4f_create_translation(dx, dy, -0.02)
                     * xr_matrix4x4f_uniform_scale(0.25);
@@ -185,6 +202,22 @@ impl ControlPanel {
         }
         Ok(())
     }
+
+    pub(crate) fn handle_thumbstick(&mut self, delta: Vector2f) {
+        let dx = delta.x;
+        log::debug!("thumbstick {}", dx);
+        match self.thumbstick_x_smoother.smooth_input(dx) {
+            Ordering::Less => self.cursor.decr_x(),
+            Ordering::Equal => {}
+            Ordering::Greater => self.cursor.incr_x(),
+        }
+        match self.thumbstick_y_smoother.smooth_input(delta.y) {
+            // yeah, this is a little backwards
+            Ordering::Less => self.cursor.incr_y(),
+            Ordering::Equal => {}
+            Ordering::Greater => self.cursor.decr_y(),
+        }
+    }
 }
 
 //
@@ -220,6 +253,39 @@ pub struct CPCursor {
     row: GorgonShape,
     axis: GorgonAxis,
     subrow: GorgonParam,
+}
+
+impl CPCursor {
+    pub fn incr_x(&mut self) {
+        self.axis = match self.axis {
+            GorgonAxis::X => GorgonAxis::Y,
+            GorgonAxis::Y => GorgonAxis::Z,
+            GorgonAxis::Z => GorgonAxis::X,
+        };
+    }
+
+    pub fn decr_x(&mut self) {
+        self.axis = match self.axis {
+            GorgonAxis::X => GorgonAxis::Z,
+            GorgonAxis::Y => GorgonAxis::X,
+            GorgonAxis::Z => GorgonAxis::Y,
+        };
+    }
+
+    pub fn incr_y(&mut self) {
+        self.row = match self.row {
+            GorgonShape::Spiral => GorgonShape::Latitude,
+            GorgonShape::Latitude => GorgonShape::Cartesian,
+            GorgonShape::Cartesian => GorgonShape::Spiral,
+        }
+    }
+    pub fn decr_y(&mut self) {
+        self.row = match self.row {
+            GorgonShape::Spiral => GorgonShape::Cartesian,
+            GorgonShape::Latitude => GorgonShape::Spiral,
+            GorgonShape::Cartesian => GorgonShape::Latitude,
+        }
+    }
 }
 
 //

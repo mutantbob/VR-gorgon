@@ -202,6 +202,10 @@ impl ActiveRenderer {
             }
         }
 
+        if let Ok(action) = self.inputs.right_joy(&self.openxr.xr_session) {
+            self.scene.handle_thumbstick(action.current_state);
+        }
+
         let before_paint = |openxr: &OpenXRComponent, frame_state: &openxr::FrameState| {
             // self.inputs.sync_actions(&openxr.xr_session).unwrap();
 

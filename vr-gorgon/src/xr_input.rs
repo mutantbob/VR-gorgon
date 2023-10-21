@@ -4,7 +4,7 @@ use openxr::{
     Action, ActionSet, ActionState, ActiveActionSet, Binding, Instance, Session, Space,
     SpaceLocation,
 };
-use openxr_sys::{Path, Posef, Time};
+use openxr_sys::{Path, Posef, Time, Vector2f};
 
 pub struct XrInputs {
     pub action_set: ActionSet,
@@ -12,6 +12,7 @@ pub struct XrInputs {
     pub controller_1: Action<Posef>,
     pub controller_space_1: Space,
     pub a_click: Action<bool>,
+    pub right_joy: Action<Vector2f>,
 }
 
 impl XrInputs {
@@ -39,6 +40,11 @@ impl XrInputs {
             .create_action("a_click", "A click", &[user_hand_right])
             .annotate_if_err(Some(instance), "failed to create action A click")?;
 
+        let right_thumbstick = Self::path_for(instance, "/user/hand/right/input/thumbstick")?;
+        let right_thumbstick_action = action_set
+            .create_action("right_thumbstick", "right thumbstick", &[user_hand_right])
+            .annotate_if_err(Some(instance), "failed to create right_thumbstick")?;
+
         {
             let bindings = [
                 Binding::new(&pose_action, left_grip_pose),
@@ -58,12 +64,13 @@ impl XrInputs {
                 Binding::new(&pose_action, left_grip_pose),
                 Binding::new(&pose_action, right_grip_pose),
                 Binding::new(&a_click_action, right_a_click),
+                Binding::new(&right_thumbstick_action, right_thumbstick),
             ];
             let interaction_profile =
                 Self::path_for(instance, "/interaction_profiles/oculus/touch_controller")?;
             instance
                 .suggest_interaction_profile_bindings(interaction_profile, &bindings)
-                .annotate_if_err(Some(instance), "failed to ")?;
+                .annotate_if_err(Some(instance), "failed to bind oculus")?;
         }
 
         let mut posef = Posef::default();
@@ -84,6 +91,7 @@ impl XrInputs {
             controller_1: pose_action,
             controller_space_1,
             a_click: a_click_action,
+            right_joy: right_thumbstick_action,
         })
     }
 
@@ -125,5 +133,9 @@ impl XrInputs {
 
     pub fn a_clicked<G>(&self, xr_session: &Session<G>) -> openxr::Result<ActionState<bool>> {
         self.a_click.state(xr_session, self.user_hand_right)
+    }
+
+    pub fn right_joy<G>(&self, xr_session: &Session<G>) -> openxr::Result<ActionState<Vector2f>> {
+        self.right_joy.state(xr_session, self.user_hand_right)
     }
 }

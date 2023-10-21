@@ -13,7 +13,7 @@ use gl_thin::linear::{
     XrMatrix4x4f, XrQuaternionf, XrVector3f,
 };
 use openxr::SpaceLocation;
-use openxr_sys::Time;
+use openxr_sys::{Time, Vector2f};
 use std::f32::consts::{PI, TAU};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -165,6 +165,10 @@ impl MyScene {
         }*/
 
         Ok(())
+    }
+
+    pub(crate) fn handle_thumbstick(&mut self, delta: Vector2f) {
+        self.controls.handle_thumbstick(delta)
     }
 }
 

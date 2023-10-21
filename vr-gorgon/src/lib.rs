@@ -19,6 +19,7 @@ mod shaders;
 mod suzanne;
 mod suzanne_geometry;
 mod text_painting;
+mod thumbstick_smoother;
 mod xr_input;
 
 pub trait Drawable {
