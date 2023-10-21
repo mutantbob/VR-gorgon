@@ -83,84 +83,160 @@ impl ControlPanel {
                 gpu_state,
             )?;
         } else {
-            self.header_1(matrix, gpu_state, -0.75)?;
-            self.header_2(matrix, gpu_state, -0.25)?;
-            self.header_3(matrix, gpu_state, 0.75)?;
+            let mut ring_sprite = None;
+            let mut cursor_y = -1.0;
+            cursor_y = self.header_1(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
 
-            {
-                let dx = match self.cursor.axis {
-                    GorgonAxis::Y => 0.25,
-                    GorgonAxis::Z => 0.75,
-                    GorgonAxis::X => -0.25,
-                };
-                let dy = match self.cursor.row {
-                    // -0.25
-                    GorgonShape::Spiral => -0.75,
-                    GorgonShape::Latitude => -0.25,
-                    GorgonShape::Cartesian => 0.75,
-                };
+            if self.cursor.row == GorgonShape::Spiral {
+                cursor_y = self.spiral_menu(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
+            }
+
+            // if self.cursor.row == GorgonShape::Latitude {
+            //     ring_y = cursor_y + 0.25;
+            // }
+            cursor_y = self.header_2(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
+
+            if self.cursor.row == GorgonShape::Latitude {
+                cursor_y = self.latitude_menu(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
+            }
+
+            // if self.cursor.row == GorgonShape::Cartesian {
+            //     ring_y = cursor_y + 0.25;
+            // }
+            cursor_y = self.header_3(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
+
+            #[allow(unused_assignments)]
+            if self.cursor.row == GorgonShape::Cartesian {
+                cursor_y = self.cartesian_menu(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
+            }
+
+            if let Some(sprite_loc) = ring_sprite {
+                let dx = sprite_loc.offset[0];
+                let dy = sprite_loc.offset[1];
+                let thick = 0.06;
+                let sx = sprite_loc.scale[0] / (1.0 - 2.0 * thick);
+                let sy = sprite_loc.scale[1] / (1.0 - 2.0 * thick);
                 let m2 = matrix
                     * xr_matrix4x4f_create_translation(dx, dy, -0.02)
-                    * xr_matrix4x4f_uniform_scale(0.25);
+                    * xr_matrix4x4f_create_scale(sx, sy, 1.0);
                 self.ring.draw(&m2, &self.square, gpu_state)?;
             }
         }
         Ok(())
     }
 
-    fn header_1(
-        &self,
+    fn header_1<'a>(
+        &'a self,
         matrix: &XrMatrix4x4f,
         gpu_state: &mut GPUState,
-        dy: f32,
-    ) -> Result<(), GLErrorWrapper> {
+        y0: f32,
+        ring_loc: &mut Option<SpriteLocation<'a>>,
+    ) -> Result<f32, GLErrorWrapper> {
+        let y = y0 + 0.25;
         {
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(-0.75, dy, 0.0)
+                * xr_matrix4x4f_create_translation(-0.75, y, 0.0)
                 * xr_matrix4x4f_uniform_scale(0.25);
             self.c_rings.draw(&m2, &self.square, gpu_state)?;
         }
 
+        if self.cursor.row == GorgonShape::Spiral && self.cursor.subrow == GorgonParam::Enable {
+            let x = self.cursor.axis.x1();
+            *ring_loc = Some(SpriteLocation::new(
+                [0.25; 2],
+                [x, y],
+                &self.sprites.texture,
+            ));
+        }
+
         {
+            let sprite = self.sprites.x();
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(-0.25, dy, -0.01)
+                * xr_matrix4x4f_create_translation(-0.25, y0 + sprite.scale[1], -0.01)
                 * xr_matrix4x4f_uniform_scale(0.25);
-            self.sprite
-                .draw2(&m2, self.sprites.x(), &self.square, gpu_state)?;
+            self.sprite.draw2(&m2, &sprite, &self.square, gpu_state)?;
         }
         {
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(0.25, dy, -0.01)
+                * xr_matrix4x4f_create_translation(0.25, y, -0.01)
                 * xr_matrix4x4f_uniform_scale(0.25);
             self.sprite
-                .draw2(&m2, self.sprites.y(), &self.square, gpu_state)?;
+                .draw2(&m2, &self.sprites.y(), &self.square, gpu_state)?;
         }
         {
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(0.75, dy, -0.01)
+                * xr_matrix4x4f_create_translation(0.75, y, -0.01)
                 * xr_matrix4x4f_uniform_scale(0.25);
             self.sprite
-                .draw2(&m2, self.sprites.z(), &self.square, gpu_state)?;
+                .draw2(&m2, &self.sprites.z(), &self.square, gpu_state)?;
         };
-        Ok(())
+        Ok(y0 + 0.5)
     }
 
-    fn header_2(
-        &self,
+    fn spiral_menu<'a>(
+        &'a self,
         matrix: &XrMatrix4x4f,
         gpu_state: &mut GPUState,
-        dy: f32,
-    ) -> Result<(), GLErrorWrapper> {
+        y_top: f32,
+        ring_loc: &mut Option<SpriteLocation<'a>>,
+    ) -> Result<f32, GLErrorWrapper> {
+        let mut y = y_top;
+
+        for (sprite, subrow) in [
+            (self.sprites.freq(), GorgonParam::Frequency),
+            (self.sprites.speed(), GorgonParam::Speed),
+            (self.sprites.amplitude(), GorgonParam::Amplitude),
+            (self.sprites.curl(), GorgonParam::Curl),
+        ] {
+            let x = -0.5;
+            let freq_sprite = sprite;
+            let y1 = y + freq_sprite.scale[1];
+            let m2 = matrix
+                * xr_matrix4x4f_create_translation(x, y1, 0.0)
+                * xr_matrix4x4f_create_scale(freq_sprite.scale[0], freq_sprite.scale[1], 1.0);
+            self.sprite
+                .draw2(&m2, &freq_sprite, &self.square, gpu_state)?;
+
+            if self.cursor.row == GorgonShape::Spiral && self.cursor.subrow == subrow {
+                *ring_loc = Some(SpriteLocation::new(
+                    freq_sprite.scale,
+                    [x, y1],
+                    &self.sprites.texture,
+                ))
+            }
+
+            y += freq_sprite.scale[1] * 2.0;
+        }
+        Ok(y)
+    }
+
+    fn header_2<'a>(
+        &'a self,
+        matrix: &XrMatrix4x4f,
+        gpu_state: &mut GPUState,
+        y0: f32,
+        ring_loc: &mut Option<SpriteLocation<'a>>,
+    ) -> Result<f32, GLErrorWrapper> {
+        let y = y0 + 0.25;
         {
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(-0.75, dy, 0.0)
+                * xr_matrix4x4f_create_translation(-0.75, y, 0.0)
                 * xr_matrix4x4f_uniform_scale(0.25);
             self.latitude.draw(&m2, &self.square, gpu_state)?;
         }
 
+        if self.cursor.row == GorgonShape::Latitude && self.cursor.subrow == GorgonParam::Enable {
+            let x = self.cursor.axis.x1();
+            *ring_loc = Some(SpriteLocation::new(
+                [0.25; 2],
+                [x, y],
+                &self.sprites.texture,
+            ));
+        }
+
         {
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(0.25, dy, -0.01)
+                * xr_matrix4x4f_create_translation(0.25, y, -0.01)
                 * xr_matrix4x4f_create_scale(0.75, 0.25, 1.0);
             self.sprite.draw(
                 &m2,
@@ -171,25 +247,74 @@ impl ControlPanel {
                 gpu_state,
             )?;
         }
-        Ok(())
+        Ok(y0 + 0.5)
     }
 
-    fn header_3(
-        &self,
+    fn latitude_menu<'a>(
+        &'a self,
         matrix: &XrMatrix4x4f,
         gpu_state: &mut GPUState,
-        dy: f32,
-    ) -> Result<(), GLErrorWrapper> {
+        y_top: f32,
+        ring_loc: &mut Option<SpriteLocation<'a>>,
+    ) -> Result<f32, GLErrorWrapper> {
+        let mut y = y_top;
+
+        for (sprite, subrow) in [
+            (self.sprites.freq(), GorgonParam::Frequency),
+            (self.sprites.speed(), GorgonParam::Speed),
+            (self.sprites.amplitude(), GorgonParam::Amplitude),
+            // (self.sprites.curl(), GorgonParam::Curl),
+        ] {
+            let x = -0.5;
+            let freq_sprite = sprite;
+            let y1 = y + freq_sprite.scale[1];
+            let m2 = matrix
+                * xr_matrix4x4f_create_translation(x, y1, 0.0)
+                * xr_matrix4x4f_create_scale(freq_sprite.scale[0], freq_sprite.scale[1], 1.0);
+            self.sprite
+                .draw2(&m2, &freq_sprite, &self.square, gpu_state)?;
+
+            if self.cursor.row == GorgonShape::Latitude && self.cursor.subrow == subrow {
+                *ring_loc = Some(SpriteLocation::new(
+                    freq_sprite.scale,
+                    [x, y1],
+                    &self.sprites.texture,
+                ))
+            }
+
+            y += freq_sprite.scale[1] * 2.0;
+        }
+
+        Ok(y)
+    }
+
+    fn header_3<'a>(
+        &'a self,
+        matrix: &XrMatrix4x4f,
+        gpu_state: &mut GPUState,
+        y0: f32,
+        ring_loc: &mut Option<SpriteLocation<'a>>,
+    ) -> Result<f32, GLErrorWrapper> {
+        let y = y0 + 0.25;
         {
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(-0.75, dy, 0.0)
+                * xr_matrix4x4f_create_translation(-0.75, y, 0.0)
                 * xr_matrix4x4f_uniform_scale(0.25);
             self.latitwod.draw(&m2, &self.square, gpu_state)?;
         }
 
+        if self.cursor.row == GorgonShape::Cartesian && self.cursor.subrow == GorgonParam::Enable {
+            let x = self.cursor.axis.x1();
+            *ring_loc = Some(SpriteLocation::new(
+                [0.25; 2],
+                [x, y],
+                &self.sprites.texture,
+            ));
+        }
+
         {
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(0.25, dy, -0.01)
+                * xr_matrix4x4f_create_translation(0.25, y, -0.01)
                 * xr_matrix4x4f_create_scale(0.75, 0.25, 1.0);
             self.sprite.draw(
                 &m2,
@@ -200,12 +325,49 @@ impl ControlPanel {
                 gpu_state,
             )?;
         }
-        Ok(())
+        Ok(y0 + 0.5)
+    }
+
+    fn cartesian_menu<'a>(
+        &'a self,
+        matrix: &XrMatrix4x4f,
+        gpu_state: &mut GPUState,
+        y_top: f32,
+        ring_loc: &mut Option<SpriteLocation<'a>>,
+    ) -> Result<f32, GLErrorWrapper> {
+        let mut y = y_top;
+        for (sprite, subrow) in [
+            (self.sprites.freq(), GorgonParam::Frequency),
+            (self.sprites.speed(), GorgonParam::Speed),
+            (self.sprites.amplitude(), GorgonParam::Amplitude),
+            // (self.sprites.curl(), GorgonParam::Curl),
+        ] {
+            let x = -0.5;
+            let freq_sprite = sprite;
+            let y1 = y + freq_sprite.scale[1];
+            let m2 = matrix
+                * xr_matrix4x4f_create_translation(x, y1, 0.0)
+                * xr_matrix4x4f_create_scale(freq_sprite.scale[0], freq_sprite.scale[1], 1.0);
+            self.sprite
+                .draw2(&m2, &freq_sprite, &self.square, gpu_state)?;
+
+            if self.cursor.row == GorgonShape::Cartesian && self.cursor.subrow == subrow {
+                *ring_loc = Some(SpriteLocation::new(
+                    freq_sprite.scale,
+                    [x, y1],
+                    &self.sprites.texture,
+                ))
+            }
+
+            y += freq_sprite.scale[1] * 2.0;
+        }
+
+        Ok(y)
     }
 
     pub(crate) fn handle_thumbstick(&mut self, delta: Vector2f) {
         let dx = delta.x;
-        log::debug!("thumbstick {}", dx);
+        // log::debug!("thumbstick {}", dx);
         match self.thumbstick_x_smoother.smooth_input(dx) {
             Ordering::Less => self.cursor.decr_x(),
             Ordering::Equal => {}
@@ -222,7 +384,7 @@ impl ControlPanel {
 
 //
 
-#[derive(Default)]
+#[derive(Default, PartialEq, Copy, Clone)]
 pub enum GorgonShape {
     #[default]
     Spiral,
@@ -230,7 +392,7 @@ pub enum GorgonShape {
     Cartesian,
 }
 
-#[derive(Default)]
+#[derive(Default, PartialEq, Copy, Clone)]
 pub enum GorgonAxis {
     #[default]
     X,
@@ -238,7 +400,21 @@ pub enum GorgonAxis {
     Z,
 }
 
-#[derive(Default)]
+impl GorgonAxis {
+    pub fn index(&self) -> u8 {
+        match self {
+            GorgonAxis::X => 0,
+            GorgonAxis::Y => 1,
+            GorgonAxis::Z => 2,
+        }
+    }
+
+    pub fn x1(&self) -> f32 {
+        self.index() as f32 * 0.5 - 0.25
+    }
+}
+
+#[derive(Default, PartialEq, Copy, Clone)]
 pub enum GorgonParam {
     #[default]
     Enable,
@@ -248,7 +424,7 @@ pub enum GorgonParam {
     Curl,
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct CPCursor {
     row: GorgonShape,
     axis: GorgonAxis,
@@ -273,17 +449,57 @@ impl CPCursor {
     }
 
     pub fn incr_y(&mut self) {
-        self.row = match self.row {
-            GorgonShape::Spiral => GorgonShape::Latitude,
-            GorgonShape::Latitude => GorgonShape::Cartesian,
-            GorgonShape::Cartesian => GorgonShape::Spiral,
+        (self.row, self.subrow) = match self.row {
+            GorgonShape::Spiral => match self.subrow {
+                GorgonParam::Enable => (GorgonShape::Spiral, GorgonParam::Frequency),
+                GorgonParam::Frequency => (GorgonShape::Spiral, GorgonParam::Speed),
+                GorgonParam::Speed => (GorgonShape::Spiral, GorgonParam::Amplitude),
+                GorgonParam::Amplitude => (GorgonShape::Spiral, GorgonParam::Curl),
+                GorgonParam::Curl => (GorgonShape::Latitude, GorgonParam::Enable),
+            },
+            GorgonShape::Latitude => match self.subrow {
+                GorgonParam::Enable => (GorgonShape::Latitude, GorgonParam::Frequency),
+                GorgonParam::Frequency => (GorgonShape::Latitude, GorgonParam::Speed),
+                GorgonParam::Speed => (GorgonShape::Latitude, GorgonParam::Amplitude),
+                GorgonParam::Amplitude | GorgonParam::Curl => {
+                    (GorgonShape::Cartesian, GorgonParam::Enable)
+                }
+            },
+
+            GorgonShape::Cartesian => match self.subrow {
+                GorgonParam::Enable => (GorgonShape::Cartesian, GorgonParam::Frequency),
+                GorgonParam::Frequency => (GorgonShape::Cartesian, GorgonParam::Speed),
+                GorgonParam::Speed => (GorgonShape::Cartesian, GorgonParam::Amplitude),
+                GorgonParam::Amplitude | GorgonParam::Curl => {
+                    (GorgonShape::Spiral, GorgonParam::Enable)
+                }
+            },
         }
     }
     pub fn decr_y(&mut self) {
-        self.row = match self.row {
-            GorgonShape::Spiral => GorgonShape::Cartesian,
-            GorgonShape::Latitude => GorgonShape::Spiral,
-            GorgonShape::Cartesian => GorgonShape::Latitude,
+        (self.row, self.subrow) = match self.row {
+            GorgonShape::Spiral => match self.subrow {
+                GorgonParam::Enable => (GorgonShape::Cartesian, GorgonParam::Amplitude),
+                GorgonParam::Frequency => (GorgonShape::Spiral, GorgonParam::Enable),
+                GorgonParam::Speed => (GorgonShape::Spiral, GorgonParam::Frequency),
+                GorgonParam::Amplitude => (GorgonShape::Spiral, GorgonParam::Speed),
+                GorgonParam::Curl => (GorgonShape::Spiral, GorgonParam::Amplitude),
+            },
+            GorgonShape::Latitude => match self.subrow {
+                GorgonParam::Enable => (GorgonShape::Spiral, GorgonParam::Curl),
+                GorgonParam::Frequency => (GorgonShape::Latitude, GorgonParam::Enable),
+                GorgonParam::Speed => (GorgonShape::Latitude, GorgonParam::Frequency),
+                GorgonParam::Amplitude => (GorgonShape::Latitude, GorgonParam::Speed),
+                GorgonParam::Curl => (GorgonShape::Latitude, GorgonParam::Amplitude),
+            },
+
+            GorgonShape::Cartesian => match self.subrow {
+                GorgonParam::Enable => (GorgonShape::Latitude, GorgonParam::Amplitude),
+                GorgonParam::Frequency => (GorgonShape::Cartesian, GorgonParam::Enable),
+                GorgonParam::Speed => (GorgonShape::Cartesian, GorgonParam::Frequency),
+                GorgonParam::Amplitude => (GorgonShape::Cartesian, GorgonParam::Speed),
+                GorgonParam::Curl => (GorgonShape::Cartesian, GorgonParam::Amplitude),
+            },
         }
     }
 }
@@ -332,6 +548,7 @@ impl<'a> SpriteLocation<'a> {
 
 pub struct SpriteSheet {
     pub texture: Texture,
+    pub word_ys: Vec<f32>,
 }
 
 impl SpriteSheet {
@@ -359,11 +576,18 @@ impl SpriteSheet {
         let small_font = 30.0;
         let m2 = font.v_metrics(Scale::uniform(small_font));
 
-        for (i, msg) in ["freq", "speed", "amplitude", "curl"].iter().enumerate() {
-            let y2 =
-                height as f32 / 4.0 + 1.0 + m2.ascent + i as f32 * 1.5 * (m2.ascent + m2.descent);
-            paint_text_in_image(&font, &mut img, small_font, point(0.0, y2), msg);
-        }
+        let word_ys: Vec<_> = ["freq", "speed", "amplitude", "curl", "kludge"]
+            .iter()
+            .enumerate()
+            .map(|(i, msg)| {
+                let y0 = height as f32 / 4.0 + 1.0 + i as f32 * 1.5 * (m2.ascent + m2.descent);
+                let y2 = y0 + m2.ascent;
+                paint_text_in_image(&font, &mut img, small_font, point(0.0, y2), msg);
+                y0 / height as f32
+            })
+            .collect();
+
+        log::debug!("word_ys {:?}", word_ys);
 
         // let (width, height) = target.get_dimensions()?;
         let mut target = Texture::new()?;
@@ -385,7 +609,10 @@ impl SpriteSheet {
             gl::RGB,
             img.as_raw(),
         )?;
-        Ok(Self { texture: target })
+        Ok(Self {
+            texture: target,
+            word_ys,
+        })
     }
 
     pub fn x(&self) -> SpriteLocation<'_> {
@@ -398,5 +625,38 @@ impl SpriteSheet {
 
     pub fn z(&self) -> SpriteLocation {
         SpriteLocation::new([0.25; 2], [0.40, 0.0], &self.texture)
+    }
+
+    pub fn freq(&self) -> SpriteLocation {
+        SpriteLocation::new(
+            [0.5, self.word_ys[1] - self.word_ys[0]],
+            [0.0, self.word_ys[0]],
+            &self.texture,
+        )
+    }
+
+    pub fn speed(&self) -> SpriteLocation {
+        const IDX: usize = 1;
+        SpriteLocation::new(
+            [0.5, self.word_ys[1 + IDX] - self.word_ys[IDX]],
+            [0.0, self.word_ys[IDX]],
+            &self.texture,
+        )
+    }
+    pub fn amplitude(&self) -> SpriteLocation {
+        const IDX: usize = 2;
+        SpriteLocation::new(
+            [0.5, self.word_ys[1 + IDX] - self.word_ys[IDX]],
+            [0.0, self.word_ys[IDX]],
+            &self.texture,
+        )
+    }
+    pub fn curl(&self) -> SpriteLocation {
+        const IDX: usize = 3;
+        SpriteLocation::new(
+            [0.5, self.word_ys[1 + IDX] - self.word_ys[IDX]],
+            [0.0, self.word_ys[IDX]],
+            &self.texture,
+        )
     }
 }

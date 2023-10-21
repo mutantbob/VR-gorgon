@@ -3,6 +3,7 @@ use gl_thin::gl_helper::{GLErrorWrapper, Texture};
 use image::RgbImage;
 use rusttype::{point, Font, PositionedGlyph, Scale};
 
+#[allow(dead_code)]
 pub fn text_to_greyscale_texture(
     width: GLint,
     height: GLint,
@@ -92,6 +93,7 @@ pub fn render_glyphs_to_grey<'a, 'f: 'a>(
     }
 }
 
+#[allow(dead_code)]
 pub fn render_glyphs_to_rgb<'a, 'f: 'a>(
     width: i32,
     height: i32,
