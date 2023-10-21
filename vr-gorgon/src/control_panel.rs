@@ -1,4 +1,6 @@
+use crate::gorgon1::MultiGorgonSettings;
 use crate::shaders::{BoxOutline, ConcentricRings, Latitude, Latitwod, SpriteRect};
+use crate::text_painting;
 use crate::text_painting::render_glyphs_to_image;
 use crate::thumbstick_smoother::ThumbstickSmoother;
 use gl::types::{GLfloat, GLsizei, GLuint};
@@ -9,9 +11,12 @@ use gl_thin::linear::{
     XrMatrix4x4f,
 };
 use image::{ImageBuffer, Rgb, RgbImage};
+use once_cell::sync::Lazy;
 use openxr_sys::Vector2f;
 use rusttype::{point, Font, Point, Scale};
+use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::fmt::{Display, Formatter};
 
 pub fn fab_uv_square(
     gpu_state: &mut GPUState,
@@ -45,6 +50,8 @@ pub struct ControlPanel {
 
     thumbstick_x_smoother: ThumbstickSmoother,
     thumbstick_y_smoother: ThumbstickSmoother,
+
+    gorgon_val: RefCell<Option<ValueEditor>>,
 }
 
 impl ControlPanel {
@@ -65,6 +72,7 @@ impl ControlPanel {
             cursor: CPCursor::default(),
             thumbstick_x_smoother: Default::default(),
             thumbstick_y_smoother: Default::default(),
+            gorgon_val: RefCell::new(None),
         })
     }
 
@@ -72,6 +80,7 @@ impl ControlPanel {
         &self,
         matrix: &XrMatrix4x4f,
         gpu_state: &mut GPUState,
+        settings: &MultiGorgonSettings,
     ) -> Result<(), GLErrorWrapper> {
         if false {
             self.sprite.draw(
@@ -88,7 +97,8 @@ impl ControlPanel {
             cursor_y = self.header_1(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
 
             if self.cursor.row == GorgonShape::Spiral {
-                cursor_y = self.spiral_menu(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
+                cursor_y =
+                    self.spiral_menu(matrix, gpu_state, cursor_y, &mut ring_sprite, settings)?;
             }
 
             // if self.cursor.row == GorgonShape::Latitude {
@@ -179,6 +189,7 @@ impl ControlPanel {
         gpu_state: &mut GPUState,
         y_top: f32,
         ring_loc: &mut Option<SpriteLocation<'a>>,
+        settings: &MultiGorgonSettings,
     ) -> Result<f32, GLErrorWrapper> {
         let mut y = y_top;
 
@@ -198,6 +209,19 @@ impl ControlPanel {
                 .draw2(&m2, &freq_sprite, &self.square, gpu_state)?;
 
             if self.cursor.row == GorgonShape::Spiral && self.cursor.subrow == subrow {
+                let one = settings.lookup(self.cursor.row, self.cursor.axis);
+                let val = match subrow {
+                    GorgonParam::Frequency => Some(FormattableValue::U8(one.frequency)),
+                    GorgonParam::Speed => Some(FormattableValue::F32(one.speed)),
+                    GorgonParam::Amplitude => Some(FormattableValue::F32(one.amplitude)),
+                    GorgonParam::Curl => Some(FormattableValue::F32(one.curl)),
+                    _ => None,
+                };
+
+                if let Some(val) = val {
+                    self.paint_editor(matrix, &freq_sprite, x, y1, val, gpu_state)?;
+                }
+
                 *ring_loc = Some(SpriteLocation::new(
                     freq_sprite.scale,
                     [x, y1],
@@ -208,6 +232,34 @@ impl ControlPanel {
             y += freq_sprite.scale[1] * 2.0;
         }
         Ok(y)
+    }
+
+    fn paint_editor(
+        &self,
+        matrix: &XrMatrix4x4f,
+        sprite: &SpriteLocation,
+        x: f32,
+        y1: f32,
+        val: FormattableValue,
+        gpu_state: &mut GPUState,
+    ) -> Result<(), GLErrorWrapper> {
+        self.update_gorgon_val_f(val);
+
+        if let Some(editor) = self.gorgon_val.borrow().as_ref() {
+            let h = 0.25;
+            let w = editor.pix_dimensions.0 as f32 * h / editor.pix_dimensions.1 as f32;
+            let x2 = x + sprite.scale[0] + 0.1 + w;
+            let m2 = matrix
+                * xr_matrix4x4f_create_translation(x2, y1, 0.0)
+                * xr_matrix4x4f_create_scale(w, h, 1.0);
+            self.sprite.draw2(
+                &m2,
+                &SpriteLocation::new([1.0; 2], [0.0; 2], &editor.texture),
+                &self.square,
+                gpu_state,
+            )?;
+        }
+        Ok(())
     }
 
     fn header_2<'a>(
@@ -365,19 +417,53 @@ impl ControlPanel {
         Ok(y)
     }
 
-    pub(crate) fn handle_thumbstick(&mut self, delta: Vector2f) {
+    pub(crate) fn handle_thumbstick(
+        &mut self,
+        delta: Vector2f,
+        settings: &mut MultiGorgonSettings,
+    ) {
         let dx = delta.x;
         // log::debug!("thumbstick {}", dx);
-        match self.thumbstick_x_smoother.smooth_input(dx) {
-            Ordering::Less => self.cursor.decr_x(),
-            Ordering::Equal => {}
-            Ordering::Greater => self.cursor.incr_x(),
+
+        let smoothed_x = self.thumbstick_x_smoother.smooth_input(dx);
+        match self.cursor.subrow {
+            GorgonParam::Enable => match smoothed_x {
+                Ordering::Less => self.cursor.decr_x(),
+                Ordering::Equal => {}
+                Ordering::Greater => self.cursor.incr_x(),
+            },
+            GorgonParam::Frequency => match smoothed_x {
+                Ordering::Less => settings.adjust_frequency(-1, self.cursor),
+                Ordering::Equal => {}
+                Ordering::Greater => settings.adjust_frequency(1, self.cursor),
+            },
+            GorgonParam::Speed => settings.adjust_speed(dx, self.cursor),
+            GorgonParam::Amplitude => settings.adjust_amplitude(dx, self.cursor),
+            GorgonParam::Curl => settings.adjust_curl(dx, self.cursor),
         }
+
         match self.thumbstick_y_smoother.smooth_input(delta.y) {
             // yeah, this is a little backwards
             Ordering::Less => self.cursor.incr_y(),
             Ordering::Equal => {}
             Ordering::Greater => self.cursor.decr_y(),
+        }
+    }
+
+    fn update_gorgon_val_f(&self, val2: FormattableValue) {
+        let stale = match self.gorgon_val.borrow().as_ref() {
+            Some(editor) => editor.val != val2,
+            _ => true,
+        };
+
+        if stale {
+            let font = default_font().unwrap();
+            let msg = format!("{}", val2);
+            if let Ok((texture, w, h)) = text_painting::text_to_greyscale_texture(40.0, &msg, font)
+            {
+                *(self.gorgon_val.borrow_mut()) =
+                    Some(ValueEditor::new(val2, texture, w as _, h as _));
+            }
         }
     }
 }
@@ -426,9 +512,9 @@ pub enum GorgonParam {
 
 #[derive(Default, Copy, Clone)]
 pub struct CPCursor {
-    row: GorgonShape,
-    axis: GorgonAxis,
-    subrow: GorgonParam,
+    pub row: GorgonShape,
+    pub axis: GorgonAxis,
+    pub subrow: GorgonParam,
 }
 
 impl CPCursor {
@@ -553,7 +639,7 @@ pub struct SpriteSheet {
 
 impl SpriteSheet {
     pub fn new() -> Result<Self, GLErrorWrapper> {
-        let font = Font::try_from_bytes(include_bytes!("AlbertText-Bold.ttf")).unwrap();
+        let font = default_font().unwrap();
 
         let width: GLsizei = 256;
         let height = 256;
@@ -565,7 +651,7 @@ impl SpriteSheet {
 
         for (i, msg) in ["x", "y", "z"].iter().enumerate() {
             paint_text_in_image(
-                &font,
+                font,
                 &mut img,
                 font_size,
                 point((width * i as GLsizei) as f32 / 4.0, ascent),
@@ -580,9 +666,9 @@ impl SpriteSheet {
             .iter()
             .enumerate()
             .map(|(i, msg)| {
-                let y0 = height as f32 / 4.0 + 1.0 + i as f32 * 1.5 * (m2.ascent + m2.descent);
+                let y0 = height as f32 / 4.0 + 1.0 + i as f32 * 1.5 * (m2.ascent - m2.descent);
                 let y2 = y0 + m2.ascent;
-                paint_text_in_image(&font, &mut img, small_font, point(0.0, y2), msg);
+                paint_text_in_image(font, &mut img, small_font, point(0.0, y2), msg);
                 y0 / height as f32
             })
             .collect();
@@ -658,5 +744,45 @@ impl SpriteSheet {
             [0.0, self.word_ys[IDX]],
             &self.texture,
         )
+    }
+}
+
+pub fn default_font() -> Option<&'static Font<'static>> {
+    static RVAL: Lazy<Option<Font>> =
+        Lazy::new(|| Font::try_from_bytes(include_bytes!("AlbertText-Bold.ttf")));
+
+    RVAL.as_ref()
+}
+
+//
+
+pub struct ValueEditor {
+    val: FormattableValue,
+    texture: Texture,
+    pix_dimensions: (GLsizei, GLsizei),
+}
+
+impl ValueEditor {
+    fn new(val: FormattableValue, texture: Texture, width: GLsizei, height: GLsizei) -> Self {
+        Self {
+            val,
+            texture,
+            pix_dimensions: (width, height),
+        }
+    }
+}
+
+#[derive(PartialEq, Copy, Clone)]
+pub enum FormattableValue {
+    U8(u8),
+    F32(f32),
+}
+
+impl Display for FormattableValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FormattableValue::U8(val) => write!(f, "{}", val),
+            FormattableValue::F32(val) => write!(f, "{:.1}", val),
+        }
     }
 }

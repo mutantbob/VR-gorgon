@@ -196,7 +196,7 @@ impl ActiveRenderer {
 
         if let Ok(action) = self.inputs.a_clicked(&self.openxr.xr_session) {
             if action.changed_since_last_sync && action.current_state {
-                if let Err(e) = self.scene.gorgon1.next_gorgon() {
+                if let Err(e) = self.scene.gorgon1.borrow_mut().next_gorgon() {
                     log::error!("malfunction instantiating gorgon {}", e);
                 }
             }

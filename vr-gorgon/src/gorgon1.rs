@@ -1,7 +1,9 @@
+use crate::control_panel::{CPCursor, GorgonAxis, GorgonShape};
 use gl::types::{GLfloat, GLint, GLuint};
 use gl_thin::gl_fancy::{GPUState, VertexBufferBundle};
 use gl_thin::gl_helper::{GLErrorWrapper, Program};
 use gl_thin::linear::XrMatrix4x4f;
+use std::cell::RefCell;
 
 #[rustfmt::skip]
 static CUBE_VERTICES: &[GLfloat] = &[
@@ -89,11 +91,17 @@ impl Gorgon1 {
     /// # parameters
     /// `phase` - should be a floating point number from \[0..1.0)
     pub fn paint(
-        &self,
+        &mut self,
         matrix: &XrMatrix4x4f,
         phase: GLfloat,
+        settings: &MultiGorgonSettings,
         gpu_state: &mut GPUState,
     ) -> Result<(), GLErrorWrapper> {
+        if *settings.dirty.borrow() {
+            self.program.rebuild(settings)?;
+            settings.dirty.replace(false);
+        }
+
         let program = &self.program.program;
         program.use_()?;
 
@@ -109,6 +117,21 @@ impl Gorgon1 {
     }
 }
 
+//
+
+const VERTEX_SHADER: &str = "
+uniform mat4 matrix;
+
+attribute vec3 position;
+
+varying vec3 ray;
+
+void main() {
+    gl_Position = matrix * vec4(position, 1.0);
+    ray = position;
+}
+";
+
 pub struct GorgonShader1 {
     program: Program,
     sul_matrix: GLuint,
@@ -118,18 +141,6 @@ pub struct GorgonShader1 {
 
 impl GorgonShader1 {
     pub fn new(selector: GorgonSelector) -> Result<Self, GLErrorWrapper> {
-        const VERTEX_SHADER: &str = "
-uniform mat4 matrix;
-
-attribute vec3 position;
-
-varying vec3 ray;
-
-void main() {
-    gl_Position = matrix * vec4(position, 1.0) ;
-    ray = position;
-}
-            ";
         let fragment_shader = match selector {
             GorgonSelector::SphereAxes => gorgon_sphere_axes(),
             GorgonSelector::Spiral => gorgon_spiral(),
@@ -152,6 +163,15 @@ void main() {
             .set_mat4u(self.sul_matrix as GLint, &matrix.m)?;
         self.program
             .set_uniform_1f(self.sul_phase as GLint, phase)?;
+        Ok(())
+    }
+
+    pub fn rebuild(&mut self, settings: &MultiGorgonSettings) -> Result<(), GLErrorWrapper> {
+        let program = Program::compile(VERTEX_SHADER, settings.fragment_shader())?;
+        self.sul_matrix = program.get_uniform_location("matrix")?;
+        self.sul_phase = program.get_uniform_location("phase")?;
+        self.sal_position = program.get_attribute_location("position")?;
+        self.program = program;
         Ok(())
     }
 }
@@ -186,4 +206,195 @@ pub fn gorgon_sphere_axes() -> &'static str {
 
 pub fn gorgon_spiral() -> &'static str {
     include_str!("gorgon-spiral.glsl")
+}
+
+//
+
+pub struct GorgonSettings {
+    pub enabled: bool,
+    pub frequency: u8,
+    pub speed: f32,
+    pub amplitude: f32,
+    pub curl: f32,
+}
+
+impl Default for GorgonSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            frequency: 4,
+            speed: 1.0,
+            amplitude: 0.0,
+            curl: 0.0,
+        }
+    }
+}
+
+impl GorgonSettings {
+    pub fn spiral_shader(&self, a1: &str, a2: &str, a3: &str) -> String {
+        format!(
+            "
+precision highp float;
+
+varying vec3 ray;
+uniform float phase;
+
+#define PI 3.1415926538
+
+void main()
+{{
+    vec3 rayn = normalize(ray);
+
+    float r = length(rayn.{a1}{a2});
+
+    float theta = atan(r, rayn.{a3});
+    float phi = atan(rayn.{a2}, rayn.{a1});
+
+    bool a = 0.5 > mod(phi*{frequency}.0/(2.0*PI) + {curl:.6}*theta/PI + phase*{speed:.6}, 1.0);
+
+
+    float g;
+    if (a ) {{
+    g = 1.0;
+    }} else {{
+    g = 0.0;
+    }}
+    gl_FragColor = vec4(g,g,g, 1.0);
+}}
+",
+            frequency = self.frequency,
+            speed = self.speed,
+            curl = self.curl,
+            a1 = a1,
+            a2 = a2,
+            a3 = a3,
+        )
+    }
+}
+
+//
+
+#[derive(Default)]
+pub struct MultiGorgonSettings {
+    dirty: RefCell<bool>,
+    spirals: [GorgonSettings; 3],
+    latitudes: [GorgonSettings; 3],
+    cartesians: [GorgonSettings; 3],
+}
+
+impl MultiGorgonSettings {
+    pub fn lookup_mut(&mut self, shape: GorgonShape, axis: GorgonAxis) -> &mut GorgonSettings {
+        let shape = self.shape_for_mut(shape);
+        &mut shape[axis.index() as usize]
+    }
+
+    pub fn lookup(&self, shape: GorgonShape, axis: GorgonAxis) -> &GorgonSettings {
+        let shape = self.shape_for(shape);
+        &shape[axis.index() as usize]
+    }
+
+    pub fn adjust_frequency(&mut self, delta: i32, cursor: CPCursor) {
+        if delta == 0 {
+            return;
+        }
+
+        let gorgon = self.lookup_mut(cursor.row, cursor.axis);
+        let freq = gorgon.frequency as i32 + delta;
+        gorgon.frequency = freq.max(1).min(255) as u8;
+        self.dirty.replace(true);
+    }
+
+    pub fn adjust_speed(&mut self, delta: f32, cursor: CPCursor) {
+        if delta == 0.0 {
+            return;
+        }
+
+        let gorgon = self.lookup_mut(cursor.row, cursor.axis);
+        gorgon.speed += 0.1 * delta;
+        self.dirty.replace(true);
+    }
+
+    pub fn adjust_amplitude(&mut self, delta: f32, cursor: CPCursor) {
+        if delta == 0.0 {
+            return;
+        }
+
+        let gorgon = self.lookup_mut(cursor.row, cursor.axis);
+        gorgon.amplitude += 0.1 * delta;
+        self.dirty.replace(true);
+    }
+
+    pub fn adjust_curl(&mut self, delta: f32, cursor: CPCursor) {
+        if delta == 0.0 {
+            return;
+        }
+
+        let gorgon = self.lookup_mut(cursor.row, cursor.axis);
+        gorgon.curl += 0.1 * delta;
+        self.dirty.replace(true);
+    }
+
+    pub fn shape_for(&self, shape: GorgonShape) -> &[GorgonSettings; 3] {
+        match shape {
+            GorgonShape::Spiral => &self.spirals,
+            GorgonShape::Latitude => &self.latitudes,
+            GorgonShape::Cartesian => &self.cartesians,
+        }
+    }
+    pub fn shape_for_mut(&mut self, shape: GorgonShape) -> &mut [GorgonSettings; 3] {
+        match shape {
+            GorgonShape::Spiral => &mut self.spirals,
+            GorgonShape::Latitude => &mut self.latitudes,
+            GorgonShape::Cartesian => &mut self.cartesians,
+        }
+    }
+
+    pub(crate) fn fragment_shader(&self) -> impl AsRef<str> + Sized {
+        let gs1 = self.lookup(GorgonShape::Spiral, GorgonAxis::X);
+        //let rval = gs1.spiral_shader("x", "y", "z");
+        let rval = gs1.spiral_shader("z", "y", "x");
+        log::debug!("new shader\n{}", &rval);
+        rval
+    }
+
+    /*    pub fn spiral_shader(gs1: &GorgonSettings, a1: &str, a2: &str, a3: &str) -> String {
+            format!(
+                "
+    precision highp float;
+
+    varying vec3 ray;
+    uniform float phase;
+
+    #define PI 3.1415926538
+
+    void main()
+    {{
+        vec3 rayn = normalize(ray);
+
+        float r = length(rayn.{a1}{a2});
+
+        float theta = atan(r, rayn.{a3});
+        float phi = atan(rayn.{a2}, rayn.{a1});
+
+        bool a = 0.5 > mod(phi*{frequency}.0/(2.0*PI) + {curl:.6}*theta/PI + phase*{speed:.6}, 1.0);
+
+
+        float g;
+        if (a ) {{
+        g = 1.0;
+        }} else {{
+        g = 0.0;
+        }}
+        gl_FragColor = vec4(g,g,g, 1.0);
+    }}
+    ",
+                frequency = gs1.frequency,
+                speed = gs1.speed,
+                curl = gs1.curl,
+                a1 = a1,
+                a2 = a2,
+                a3 = a3,
+            )
+        }
+    */
 }

@@ -1,6 +1,6 @@
 use crate::control_panel::ControlPanel;
 use crate::drawcore;
-use crate::gorgon1::Gorgon1;
+use crate::gorgon1::{Gorgon1, MultiGorgonSettings};
 use crate::rainbow_triangle::RainbowTriangle;
 use crate::suzanne::Suzanne;
 use gl_thin::gl_fancy::GPUState;
@@ -14,14 +14,16 @@ use gl_thin::linear::{
 };
 use openxr::SpaceLocation;
 use openxr_sys::{Time, Vector2f};
+use std::cell::RefCell;
 use std::f32::consts::{PI, TAU};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct MyScene {
     pub rainbow_triangle: RainbowTriangle<'static>,
     pub suzanne: Suzanne,
-    pub gorgon1: Gorgon1,
+    pub gorgon1: RefCell<Gorgon1>,
     pub controls: ControlPanel,
+    gorgon_settings: MultiGorgonSettings,
 }
 
 impl MyScene {
@@ -29,8 +31,9 @@ impl MyScene {
         Ok(MyScene {
             rainbow_triangle: RainbowTriangle::new(gpu_state)?,
             suzanne: Suzanne::new(gpu_state)?,
-            gorgon1: Gorgon1::new(gpu_state)?,
+            gorgon1: RefCell::new(Gorgon1::new(gpu_state)?),
             controls: ControlPanel::new(gpu_state)?,
+            gorgon_settings: MultiGorgonSettings::default(),
         })
     }
 
@@ -98,7 +101,9 @@ impl MyScene {
             (phase as f32) / 16000.0
         };
 
-        self.gorgon1.paint(&skybox_pv, phase, gpu_state)?;
+        self.gorgon1
+            .borrow_mut()
+            .paint(&skybox_pv, phase, &self.gorgon_settings, gpu_state)?;
 
         //
 
@@ -146,7 +151,8 @@ impl MyScene {
                 translate * rotation_matrix * t1 * r1 * s1
             };
 
-            self.controls.draw(&(matrix_pv * model), gpu_state)?;
+            self.controls
+                .draw(&(matrix_pv * model), gpu_state, &self.gorgon_settings)?;
         }
 
         /* {
@@ -168,7 +174,8 @@ impl MyScene {
     }
 
     pub(crate) fn handle_thumbstick(&mut self, delta: Vector2f) {
-        self.controls.handle_thumbstick(delta)
+        self.controls
+            .handle_thumbstick(delta, &mut self.gorgon_settings)
     }
 }
 
