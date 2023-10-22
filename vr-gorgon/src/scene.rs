@@ -15,7 +15,7 @@ use gl_thin::linear::{
 use openxr::SpaceLocation;
 use openxr_sys::{Time, Vector2f};
 use std::cell::RefCell;
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct MyScene {
@@ -35,6 +35,13 @@ impl MyScene {
             speed: 4.0,
             amplitude: 0.0,
             curl: std::f32::consts::PI,
+        };
+        gorgon_settings.latitudes[2] = GorgonSettings {
+            enabled: true,
+            frequency: 40,
+            speed: 1.0,
+            amplitude: 3.0,
+            curl: 0.0,
         };
         Ok(MyScene {
             rainbow_triangle: RainbowTriangle::new(gpu_state)?,
@@ -131,7 +138,8 @@ impl MyScene {
             let model = {
                 let translate =
                     xr_matrix4x4f_create_translation_v(&controller_1.pose.position.into());
-                let upright = matrix_rotation_about_x(PI);
+                // let upright = matrix_rotation_about_x(PI);
+                let upright = rotate_x2(-1.0, 0.0);
                 let rotation_matrix =
                     xr_matrix4x4f_create_from_quaternion(&controller_1.pose.orientation.into());
                 let scale1 = 0.05;
@@ -238,6 +246,7 @@ pub fn rotate_y2(cos: f32, sin: f32) -> XrMatrix4x4f {
     .into()
 }
 
+#[allow(dead_code)]
 pub fn matrix_rotation_about_x(theta: f32) -> XrMatrix4x4f {
     rotate_x2(theta.cos(), theta.sin())
 }

@@ -245,7 +245,7 @@ vec3 c2s(vec3 rayn)
 {
     float r = length(rayn.xy);
 
-    float theta = atan(r, rayn.z);
+    float theta = atan(rayn.z, r);
     float phi = atan(rayn.y, rayn.x);
     return vec3(theta, phi, r);
 }
@@ -269,6 +269,23 @@ bool checker{index}(vec3 sc)
             curl = self.curl,
         )
     }
+
+    pub fn latitude_shader(&self, index: usize) -> String {
+        format!(
+            "
+bool checker{index}(vec3 sc)
+{{
+    float theta = sc.x;
+    float phi = sc.y;
+    float offset = {amplitude:.6}*sin(mod(phase*2.0*{speed:.6}, 2.0)*PI);
+    return 0.5 > mod( theta * {frequency}.0 / (2.0*PI) + offset, 1.0);
+}}",
+            index = index,
+            frequency = self.frequency,
+            speed = self.speed,
+            amplitude = self.amplitude,
+        )
+    }
 }
 
 //
@@ -282,6 +299,12 @@ impl GorgonFragmentShaderBuilder {
     pub fn add_spiral(&mut self, settings: &GorgonSettings, swizzle: &str) {
         let index = self.pieces.len();
         let glsl = settings.spiral_shader(index);
+        self.pieces.push((swizzle.into(), glsl))
+    }
+
+    pub fn add_latitude(&mut self, settings: &GorgonSettings, swizzle: &str) {
+        let index = self.pieces.len();
+        let glsl = settings.latitude_shader(index);
         self.pieces.push((swizzle.into(), glsl))
     }
 
@@ -402,9 +425,15 @@ impl MultiGorgonSettings {
 
     pub(crate) fn fragment_shader(&self) -> impl AsRef<str> + Sized {
         let mut builder = GorgonFragmentShaderBuilder::default();
-        for (swizzle, settings) in ["yzx", "zxy", "xyz"].iter().zip(self.spirals.iter()) {
+        let swizzles = ["yzx", "zxy", "xyz"];
+        for (swizzle, settings) in swizzles.iter().zip(self.spirals.iter()) {
             if settings.enabled {
                 builder.add_spiral(settings, swizzle);
+            }
+        }
+        for (swizzle, settings) in swizzles.iter().zip(self.latitudes.iter()) {
+            if settings.enabled {
+                builder.add_latitude(settings, swizzle);
             }
         }
 
