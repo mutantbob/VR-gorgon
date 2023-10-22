@@ -110,6 +110,14 @@ impl Latitude {
         })
     }
 
+    /// use this with [VertexBufferBundle::new]
+    pub fn attributes_tuples(&self, position_len: i32) -> [(GLuint, i32, i32); 2] {
+        [
+            (self.sal_position, position_len, 0),
+            (self.sal_uv, 2, position_len),
+        ]
+    }
+
     pub fn set_parameters(&self, matrix: &XrMatrix4x4f) -> Result<(), GLErrorWrapper> {
         self.program.set_mat4u(self.sul_matrix as _, &matrix.m)
     }
@@ -168,6 +176,14 @@ impl Latitwod {
             sal_position,
             sal_uv,
         })
+    }
+
+    /// use this with [VertexBufferBundle::new]
+    pub fn attributes_tuples(&self, position_len: i32) -> [(GLuint, i32, i32); 2] {
+        [
+            (self.sal_position, position_len, 0),
+            (self.sal_uv, 2, position_len),
+        ]
     }
 
     pub fn set_parameters(&self, matrix: &XrMatrix4x4f) -> Result<(), GLErrorWrapper> {
@@ -275,15 +291,15 @@ void main() {
 }
 "
     }
-    /*
-        /// use this with [VertexBufferBundle::new]
-        pub fn attributes_tuples(&self, position_len: i32) -> [(GLuint, i32, i32); 2] {
-            [
-                (self.sal_position, position_len, 0),
-                (self.sal_uv, 2, position_len),
-            ]
-        }
-    */
+
+    /// use this with [VertexBufferBundle::new]
+    pub fn attributes_tuples(&self, position_len: i32) -> [(GLuint, i32, i32); 2] {
+        [
+            (self.sal_position, position_len, 0),
+            (self.sal_uv, 2, position_len),
+        ]
+    }
+
     pub fn set_parameters(
         &self,
         matrix: &XrMatrix4x4f,
@@ -375,15 +391,15 @@ void main()
 }
 "
     }
-    /*
-        /// use this with [VertexBufferBundle::new]
-        pub fn attributes_tuples(&self, position_len: i32) -> [(GLuint, i32, i32); 2] {
-            [
-                (self.sal_position, position_len, 0),
-                (self.sal_uv, 2, position_len),
-            ]
-        }
-    */
+
+    /// use this with [VertexBufferBundle::new]
+    pub fn attributes_tuples(&self, position_len: i32) -> [(GLuint, i32, i32); 2] {
+        [
+            (self.sal_position, position_len, 0),
+            (self.sal_uv, 2, position_len),
+        ]
+    }
+
     pub fn set_parameters(&self, matrix: &XrMatrix4x4f) -> Result<(), GLErrorWrapper> {
         self.program.set_mat4u(self.sul_matrix as _, &matrix.m)
     }

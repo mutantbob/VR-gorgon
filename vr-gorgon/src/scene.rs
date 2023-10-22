@@ -1,6 +1,6 @@
 use crate::control_panel::ControlPanel;
 use crate::drawcore;
-use crate::gorgon1::{Gorgon1, MultiGorgonSettings};
+use crate::gorgon1::{Gorgon1, GorgonSettings, MultiGorgonSettings};
 use crate::rainbow_triangle::RainbowTriangle;
 use crate::suzanne::Suzanne;
 use gl_thin::gl_fancy::GPUState;
@@ -28,12 +28,20 @@ pub struct MyScene {
 
 impl MyScene {
     pub fn new(gpu_state: &mut GPUState) -> Result<Self, GLErrorWrapper> {
+        let mut gorgon_settings = MultiGorgonSettings::default();
+        gorgon_settings.spirals[2] = GorgonSettings {
+            enabled: true,
+            frequency: 8,
+            speed: 4.0,
+            amplitude: 0.0,
+            curl: std::f32::consts::PI,
+        };
         Ok(MyScene {
             rainbow_triangle: RainbowTriangle::new(gpu_state)?,
             suzanne: Suzanne::new(gpu_state)?,
             gorgon1: RefCell::new(Gorgon1::new(gpu_state)?),
             controls: ControlPanel::new(gpu_state)?,
-            gorgon_settings: MultiGorgonSettings::default(),
+            gorgon_settings,
         })
     }
 

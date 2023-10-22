@@ -222,7 +222,7 @@ pub struct GorgonSettings {
 impl Default for GorgonSettings {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             frequency: 4,
             speed: 1.0,
             amplitude: 0.0,
@@ -246,7 +246,7 @@ vec3 c2s(vec3 rayn)
     float r = length(rayn.xy);
 
     float theta = atan(r, rayn.z);
-    float phi = atan(rayn.x, rayn.y);
+    float phi = atan(rayn.y, rayn.x);
     return vec3(theta, phi, r);
 }
 "
@@ -328,9 +328,9 @@ void main()
 #[derive(Default)]
 pub struct MultiGorgonSettings {
     dirty: RefCell<bool>,
-    spirals: [GorgonSettings; 3],
-    latitudes: [GorgonSettings; 3],
-    cartesians: [GorgonSettings; 3],
+    pub spirals: [GorgonSettings; 3],
+    pub latitudes: [GorgonSettings; 3],
+    pub cartesians: [GorgonSettings; 3],
 }
 
 impl MultiGorgonSettings {
@@ -402,10 +402,12 @@ impl MultiGorgonSettings {
 
     pub(crate) fn fragment_shader(&self) -> impl AsRef<str> + Sized {
         let mut builder = GorgonFragmentShaderBuilder::default();
-        let gs1 = self.lookup(GorgonShape::Spiral, GorgonAxis::X);
-        if gs1.enabled {
-            builder.add_spiral(gs1, "yzx");
+        for (swizzle, settings) in ["yzx", "zxy", "xyz"].iter().zip(self.spirals.iter()) {
+            if settings.enabled {
+                builder.add_spiral(settings, swizzle);
+            }
         }
+
         let rval = builder.build();
         log::debug!("new shader\n{}", &rval);
         rval
