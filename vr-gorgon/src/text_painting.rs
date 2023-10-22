@@ -1,4 +1,5 @@
 use gl::types::GLint;
+use gl_thin::gl_fancy::GPUState;
 use gl_thin::gl_helper::{GLErrorWrapper, Texture};
 use image::{ImageBuffer, Rgb, RgbImage};
 use rusttype::{point, Font, Point, PositionedGlyph, Scale};
@@ -10,6 +11,7 @@ pub fn text_to_greyscale_texture_old(
     font_size: f32,
     message: &str,
     font: &Font,
+    gpu_state: &mut GPUState,
 ) -> Result<Texture, GLErrorWrapper> {
     let scale = Scale {
         x: font_size,
@@ -33,21 +35,22 @@ pub fn text_to_greyscale_texture_old(
     }
 
     // let (width, height) = target.get_dimensions()?;
-    let mut target = Texture::new()?;
+    let target = Texture::new()?;
 
     if false {
         // this doesn't work on the oculus
         let mut pixel_data = vec![99u8; (width * height) as usize];
         render_glyphs_to_grey(width, height, &glyphs, &mut pixel_data);
-        target.write_pixels_and_generate_mipmap(
-            gl::TEXTURE_2D,
-            0,
-            gl::RGB as GLint,
-            width,
-            height,
-            gl::RED,
-            pixel_data.as_slice(),
-        )?;
+        target
+            .bound(gl::TEXTURE_2D, gpu_state)?
+            .write_pixels_and_generate_mipmap(
+                0,
+                gl::RGB as GLint,
+                width,
+                height,
+                gl::RED,
+                pixel_data.as_slice(),
+            )?;
     } else {
         let mut img = RgbImage::new(width as _, height as _);
         render_glyphs_to_image(&glyphs, &mut img);
@@ -60,15 +63,16 @@ pub fn text_to_greyscale_texture_old(
             );
         }
 
-        target.write_pixels_and_generate_mipmap(
-            gl::TEXTURE_2D,
-            0,
-            gl::RGB as GLint,
-            width,
-            height,
-            gl::RGB,
-            img.as_raw(),
-        )?;
+        target
+            .bound(gl::TEXTURE_2D, gpu_state)?
+            .write_pixels_and_generate_mipmap(
+                0,
+                gl::RGB as GLint,
+                width,
+                height,
+                gl::RGB,
+                img.as_raw(),
+            )?;
     }
     Ok(target)
 }
@@ -77,6 +81,7 @@ pub fn text_to_greyscale_texture(
     font_size: f32,
     message: &str,
     font: &Font,
+    gpu_state: &mut GPUState,
 ) -> Result<(Texture, usize, usize), GLErrorWrapper> {
     let scale = Scale {
         x: font_size,
@@ -113,21 +118,23 @@ pub fn text_to_greyscale_texture(
     log::debug!("width: {}, height: {}", width, height);
 
     // let (width, height) = target.get_dimensions()?;
-    let mut target = Texture::new()?;
+    let target = Texture::new()?;
 
     if false {
         // this doesn't work on the oculus
         let mut pixel_data = vec![99u8; (width * height) as usize];
         render_glyphs_to_grey(width as i32, height as i32, &glyphs, &mut pixel_data);
-        target.write_pixels_and_generate_mipmap(
-            gl::TEXTURE_2D,
-            0,
-            gl::RGB as GLint,
-            width as _,
-            height as _,
-            gl::RED,
-            pixel_data.as_slice(),
-        )?;
+
+        target
+            .bound(gl::TEXTURE_2D, gpu_state)?
+            .write_pixels_and_generate_mipmap(
+                0,
+                gl::RGB as GLint,
+                width as _,
+                height as _,
+                gl::RED,
+                pixel_data.as_slice(),
+            )?;
     } else {
         let mut img = RgbImage::new(width as _, height as _);
         render_glyphs_to_image(&glyphs, &mut img);
@@ -140,15 +147,16 @@ pub fn text_to_greyscale_texture(
             );
         }
 
-        target.write_pixels_and_generate_mipmap(
-            gl::TEXTURE_2D,
-            0,
-            gl::RGB as GLint,
-            width as _,
-            height as _,
-            gl::RGB,
-            img.as_raw(),
-        )?;
+        target
+            .bound(gl::TEXTURE_2D, gpu_state)?
+            .write_pixels_and_generate_mipmap(
+                0,
+                gl::RGB as GLint,
+                width as _,
+                height as _,
+                gl::RGB,
+                img.as_raw(),
+            )?;
     }
     Ok((target, width, height))
 }

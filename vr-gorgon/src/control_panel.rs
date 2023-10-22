@@ -144,7 +144,7 @@ impl ControlPanel {
             latitude,
             latitwod: LatitwodG::new(&square, gpu_state)?,
             // square,
-            sprites: SpriteSheet::new()?,
+            sprites: SpriteSheet::new(gpu_state)?,
             sprite,
             ring: BoxOutlineG::new(&square, gpu_state)?,
             cursor: CPCursor::default(),
@@ -306,7 +306,7 @@ impl ControlPanel {
         val: FormattableValue,
         gpu_state: &mut GPUState,
     ) -> Result<(), GLErrorWrapper> {
-        self.update_gorgon_val_f(val);
+        self.update_gorgon_val_f(val, gpu_state);
 
         if let Some(editor) = self.gorgon_val.borrow().as_ref() {
             let h = 0.25;
@@ -508,7 +508,7 @@ impl ControlPanel {
         }
     }
 
-    fn update_gorgon_val_f(&self, val2: FormattableValue) {
+    fn update_gorgon_val_f(&self, val2: FormattableValue, gpu_state: &mut GPUState) {
         let stale = match self.gorgon_val.borrow().as_ref() {
             Some(editor) => editor.val != val2,
             _ => true,
@@ -517,7 +517,8 @@ impl ControlPanel {
         if stale {
             let font = default_font().unwrap();
             let msg = format!("{}", val2);
-            if let Ok((texture, w, h)) = text_painting::text_to_greyscale_texture(40.0, &msg, font)
+            if let Ok((texture, w, h)) =
+                text_painting::text_to_greyscale_texture(40.0, &msg, font, gpu_state)
             {
                 *(self.gorgon_val.borrow_mut()) =
                     Some(ValueEditor::new(val2, texture, w as _, h as _));

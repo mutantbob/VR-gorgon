@@ -1,5 +1,6 @@
 use crate::{control_panel, text_painting};
 use gl::types::GLsizei;
+use gl_thin::gl_fancy::GPUState;
 use gl_thin::gl_helper::{GLErrorWrapper, Texture};
 use image::RgbImage;
 use rusttype::{point, Scale};
@@ -36,7 +37,7 @@ pub struct SpriteSheet {
 }
 
 impl SpriteSheet {
-    pub fn new() -> Result<Self, GLErrorWrapper> {
+    pub fn new(gpu_state: &mut GPUState) -> Result<Self, GLErrorWrapper> {
         let font = control_panel::default_font().unwrap();
 
         let width: GLsizei = 256;
@@ -74,7 +75,7 @@ impl SpriteSheet {
         log::debug!("word_ys {:?}", word_ys);
 
         // let (width, height) = target.get_dimensions()?;
-        let mut target = Texture::new()?;
+        let target = Texture::new()?;
 
         if true {
             log::debug!(
@@ -84,15 +85,16 @@ impl SpriteSheet {
             );
         }
 
-        target.write_pixels_and_generate_mipmap(
-            gl::TEXTURE_2D,
-            0,
-            gl::RGB as _,
-            width,
-            height,
-            gl::RGB,
-            img.as_raw(),
-        )?;
+        target
+            .bound(gl::TEXTURE_2D, gpu_state)?
+            .write_pixels_and_generate_mipmap(
+                0,
+                gl::RGB as _,
+                width,
+                height,
+                gl::RGB,
+                img.as_raw(),
+            )?;
         Ok(Self {
             texture: target,
             word_ys,
