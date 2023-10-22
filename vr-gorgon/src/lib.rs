@@ -16,6 +16,7 @@ mod gorgon1;
 mod rainbow_triangle;
 mod scene;
 mod shaders;
+mod sprites;
 mod suzanne;
 mod suzanne_geometry;
 mod text_painting;

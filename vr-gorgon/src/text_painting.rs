@@ -1,7 +1,7 @@
 use gl::types::GLint;
 use gl_thin::gl_helper::{GLErrorWrapper, Texture};
-use image::RgbImage;
-use rusttype::{point, Font, PositionedGlyph, Scale};
+use image::{ImageBuffer, Rgb, RgbImage};
+use rusttype::{point, Font, Point, PositionedGlyph, Scale};
 
 #[allow(dead_code)]
 pub fn text_to_greyscale_texture_old(
@@ -215,4 +215,16 @@ pub fn render_glyphs_to_image<'a, 'f: 'a>(
             })
         }
     }
+}
+
+pub fn paint_text_in_image(
+    font: &Font,
+    img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>,
+    scale: f32,
+    offset: Point<f32>,
+    msg: &str,
+) {
+    let glyphs: Vec<_> = font.layout(msg, Scale::uniform(scale), offset).collect();
+
+    render_glyphs_to_image(&glyphs, img);
 }

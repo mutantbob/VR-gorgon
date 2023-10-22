@@ -1,4 +1,4 @@
-use crate::control_panel::SpriteLocation;
+use crate::sprites::SpriteLocation;
 use gl::types::{GLfloat, GLsizei, GLuint};
 use gl_thin::gl_fancy::{ActiveTextureUnit, GPUState, VertexBufferBundle};
 use gl_thin::gl_helper::{GLBufferType, GLErrorWrapper, Program, Texture};
