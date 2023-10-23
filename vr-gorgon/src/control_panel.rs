@@ -35,9 +35,13 @@ pub fn fab_uv_square_lesser(
 pub struct SpriteRectG {
     shader: SpriteRect,
     square: VertexBufferBundle<'static, GLfloat, u8>,
+    bg: [f32; 4],
 }
 
 impl SpriteRectG {
+    const FG: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+    const HIGHLIGHT: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+
     pub fn new(
         buffers: &VertexBufferLite<'static, GLfloat, u8>,
         gpu_state: &mut GPUState,
@@ -45,7 +49,11 @@ impl SpriteRectG {
         let shader = SpriteRect::new()?;
         let square =
             VertexBufferBundle::from_buffers(gpu_state, buffers, 4, &shader.attributes_tuples(2))?;
-        Ok(Self { shader, square })
+        Ok(Self {
+            shader,
+            square,
+            bg: [1.0, 1.0, 1.0, 0.5],
+        })
     }
 
     pub fn draw(
@@ -55,9 +63,18 @@ impl SpriteRectG {
         offset: &[f32; 2],
         texture: &Texture,
         gpu_state: &mut GPUState,
+        fg: &[f32; 4],
     ) -> Result<(), GLErrorWrapper> {
-        self.shader
-            .draw(matrix, scale, offset, texture, &self.square, gpu_state)
+        self.shader.draw(
+            matrix,
+            scale,
+            offset,
+            texture,
+            fg,
+            &self.bg,
+            &self.square,
+            gpu_state,
+        )
     }
 
     pub fn draw2(
@@ -65,8 +82,19 @@ impl SpriteRectG {
         matrix: &XrMatrix4x4f,
         sprite: &SpriteLocation,
         gpu_state: &mut GPUState,
+        fg: &[f32; 4],
     ) -> Result<(), GLErrorWrapper> {
-        self.shader.draw2(matrix, sprite, &self.square, gpu_state)
+        let bg = &self.bg;
+        self.shader
+            .draw2(matrix, sprite, fg, bg, &self.square, gpu_state)
+    }
+
+    pub fn fg_for(highlight: bool) -> &'static [f32; 4] {
+        if highlight {
+            &Self::HIGHLIGHT
+        } else {
+            &Self::FG
+        }
     }
 }
 
@@ -115,13 +143,10 @@ shader_plus_geometry! {Latitwod, LatitwodG}
 pub struct ControlPanel {
     c_rings: ConcentricRingsG,
     sprite: SpriteRectG,
-    // sprite_square: VertexBufferBundle<'static, GLfloat, u8>,
     latitude: LatitudeG,
     latitwod: LatitwodG,
-    // square: VertexBufferBundle<'static, GLfloat, u8>,
     sprites: SpriteSheet,
     ring: BoxOutlineG,
-    // ring_square: VertexBufferBundle<'static, GLfloat, u8>,
     cursor: CPCursor,
 
     thumbstick_x_smoother: ThumbstickSmoother,
@@ -162,7 +187,7 @@ impl ControlPanel {
     ) -> Result<(), GLErrorWrapper> {
         let mut ring_sprite = None;
         let mut cursor_y = -1.0;
-        cursor_y = self.header_1(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
+        cursor_y = self.header_1(matrix, gpu_state, cursor_y, &mut ring_sprite, settings)?;
 
         if self.cursor.row == GorgonShape::Spiral {
             cursor_y = self.spiral_menu(matrix, gpu_state, cursor_y, &mut ring_sprite, settings)?;
@@ -207,6 +232,7 @@ impl ControlPanel {
         gpu_state: &mut GPUState,
         y0: f32,
         ring_loc: &mut Option<SpriteLocation<'a>>,
+        settings: &MultiGorgonSettings,
     ) -> Result<f32, GLErrorWrapper> {
         let y = y0 + 0.25;
         {
@@ -216,7 +242,9 @@ impl ControlPanel {
             self.c_rings.draw(&m2, gpu_state)?;
         }
 
-        if self.cursor.row == GorgonShape::Spiral && self.cursor.subrow == GorgonParam::Enable {
+        let spiral_enable =
+            self.cursor.row == GorgonShape::Spiral && self.cursor.subrow == GorgonParam::Enable;
+        if spiral_enable {
             let x = self.cursor.axis.x1();
             *ring_loc = Some(SpriteLocation::new(
                 [0.25; 2],
@@ -230,19 +258,30 @@ impl ControlPanel {
             let m2 = matrix
                 * xr_matrix4x4f_create_translation(-0.25, y0 + sprite.scale[1], -0.01)
                 * xr_matrix4x4f_uniform_scale(0.25);
-            self.sprite.draw2(&m2, &sprite, gpu_state)?;
+            let fg = if spiral_enable && settings.lookup(self.cursor.row, GorgonAxis::X).enabled {
+                &SpriteRectG::HIGHLIGHT
+            } else {
+                &SpriteRectG::FG
+            };
+            self.sprite.draw2(&m2, &sprite, gpu_state, fg)?;
         }
         {
             let m2 = matrix
                 * xr_matrix4x4f_create_translation(0.25, y, -0.01)
                 * xr_matrix4x4f_uniform_scale(0.25);
-            self.sprite.draw2(&m2, &self.sprites.y(), gpu_state)?;
+            let fg = SpriteRectG::fg_for(
+                spiral_enable && settings.lookup(self.cursor.row, GorgonAxis::Y).enabled,
+            );
+            self.sprite.draw2(&m2, &self.sprites.y(), gpu_state, fg)?;
         }
         {
             let m2 = matrix
                 * xr_matrix4x4f_create_translation(0.75, y, -0.01)
                 * xr_matrix4x4f_uniform_scale(0.25);
-            self.sprite.draw2(&m2, &self.sprites.z(), gpu_state)?;
+            let fg = SpriteRectG::fg_for(
+                spiral_enable && settings.lookup(self.cursor.row, GorgonAxis::Z).enabled,
+            );
+            self.sprite.draw2(&m2, &self.sprites.z(), gpu_state, fg)?;
         };
         Ok(y0 + 0.5)
     }
@@ -269,7 +308,8 @@ impl ControlPanel {
             let m2 = matrix
                 * xr_matrix4x4f_create_translation(x, y1, 0.0)
                 * xr_matrix4x4f_create_scale(freq_sprite.scale[0], freq_sprite.scale[1], 1.0);
-            self.sprite.draw2(&m2, &freq_sprite, gpu_state)?;
+            self.sprite
+                .draw2(&m2, &freq_sprite, gpu_state, &SpriteRectG::FG)?;
 
             if self.cursor.row == GorgonShape::Spiral && self.cursor.subrow == subrow {
                 let one = settings.lookup(self.cursor.row, self.cursor.axis);
@@ -319,6 +359,7 @@ impl ControlPanel {
                 &m2,
                 &SpriteLocation::new([1.0; 2], [0.0; 2], &editor.texture),
                 gpu_state,
+                &SpriteRectG::FG,
             )?;
         }
         Ok(())
@@ -358,6 +399,7 @@ impl ControlPanel {
                 &[-0.1, 0.0],
                 &self.sprites.texture,
                 gpu_state,
+                &SpriteRectG::FG,
             )?;
         }
         Ok(y0 + 0.5)
@@ -384,7 +426,8 @@ impl ControlPanel {
             let m2 = matrix
                 * xr_matrix4x4f_create_translation(x, y1, 0.0)
                 * xr_matrix4x4f_create_scale(freq_sprite.scale[0], freq_sprite.scale[1], 1.0);
-            self.sprite.draw2(&m2, &freq_sprite, gpu_state)?;
+            self.sprite
+                .draw2(&m2, &freq_sprite, gpu_state, &SpriteRectG::FG)?;
 
             if self.cursor.row == GorgonShape::Latitude && self.cursor.subrow == subrow {
                 *ring_loc = Some(SpriteLocation::new(
@@ -434,6 +477,7 @@ impl ControlPanel {
                 &[-0.1, 0.0],
                 &self.sprites.texture,
                 gpu_state,
+                &SpriteRectG::FG,
             )?;
         }
         Ok(y0 + 0.5)
@@ -459,7 +503,8 @@ impl ControlPanel {
             let m2 = matrix
                 * xr_matrix4x4f_create_translation(x, y1, 0.0)
                 * xr_matrix4x4f_create_scale(freq_sprite.scale[0], freq_sprite.scale[1], 1.0);
-            self.sprite.draw2(&m2, &freq_sprite, gpu_state)?;
+            self.sprite
+                .draw2(&m2, &freq_sprite, gpu_state, &SpriteRectG::FG)?;
 
             if self.cursor.row == GorgonShape::Cartesian && self.cursor.subrow == subrow {
                 *ring_loc = Some(SpriteLocation::new(

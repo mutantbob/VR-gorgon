@@ -143,12 +143,12 @@ precision mediump float;
 #define PI 3.1415926538
 varying vec2 tex_coord;
 void main() {
-    vec2 dxy = tex_coord - vec2(0.5, 1.0); 
+    vec2 dxy = tex_coord - vec2(0.5, 1.0);
     float d1 = length(dxy);
     float theta = atan(dxy.x, dxy.y);
     bool a = 0.5 > mod(theta * 6.0 / PI, 1.0);
-    float g = a ? 1.0:0.0; 
-    gl_FragColor = d1 > 0.5 ? vec4(0.0, 0.0, 0.0, 0.0) : vec4(g,g, g, 1.0) ; 
+    float g = a ? 1.0:0.0;
+    gl_FragColor = d1 > 0.5 ? vec4(0.0, 0.0, 0.0, 0.0) : vec4(g,g, g, 1.0) ;
 }
         "
     }
@@ -211,11 +211,11 @@ precision mediump float;
 #define PI 3.1415926538
 varying vec2 tex_coord;
 void main() {
-    vec2 dxy = tex_coord - vec2(0.5, 1.0); 
+    vec2 dxy = tex_coord - vec2(0.5, 1.0);
     float d1 = length(dxy);
     bool a = 0.5 > mod(tex_coord.x * 4.0, 1.0);
-    float g = a ? 1.0:0.0; 
-    gl_FragColor = d1 > 0.5 ? vec4(0.0, 0.0, 0.0, 0.0) : vec4(g,g, g, 1.0) ; 
+    float g = a ? 1.0:0.0;
+    gl_FragColor = d1 > 0.5 ? vec4(0.0, 0.0, 0.0, 0.0) : vec4(g,g, g, 1.0) ;
 }
         "
     }
@@ -232,6 +232,8 @@ pub struct SpriteRect {
     pub sul_scale: GLuint,
     pub sul_offset: GLuint,
     pub sul_texture: GLuint,
+    pub sul_fg: GLuint,
+    pub sul_bg: GLuint,
 }
 
 impl SpriteRect {
@@ -243,6 +245,8 @@ impl SpriteRect {
         let sul_scale = program.get_uniform_location("scale")?;
         let sul_offset = program.get_uniform_location("offset")?;
         let sul_texture = program.get_uniform_location("tex")?;
+        let sul_fg = program.get_uniform_location("fg")?;
+        let sul_bg = program.get_uniform_location("bg")?;
         Ok(Self {
             program,
             sal_position,
@@ -251,6 +255,8 @@ impl SpriteRect {
             sul_scale,
             sul_offset,
             sul_texture,
+            sul_fg,
+            sul_bg,
         })
     }
 
@@ -279,15 +285,13 @@ precision mediump float;
 
 uniform sampler2D tex;
 varying vec2 tex_coord;
+uniform vec4 fg;
+uniform vec4 bg;
 
 void main() {
     vec4 rgba = texture2D(tex, tex_coord);
     float alpha = rgba.r;
-    vec4 fg = vec4(0.0, 0.0, 0.0, 1.0);
-    vec4 bg = vec4(0.0, 1.0, 0.0, 0.5);
-    //float alpha = mix(0.5, 1.0, rgba.r); 
-    gl_FragColor = //vec4(0.0, 0.0, 0.0, alpha);
-    mix(bg, fg, alpha); 
+    gl_FragColor = mix(bg, fg, alpha);
 }
 "
     }
@@ -306,12 +310,17 @@ void main() {
         scale: &[f32; 2],
         offset: &[f32; 2],
         tex_unit: &ActiveTextureUnit,
+        fg: &[f32; 4],
+        bg: &[f32; 4],
     ) -> Result<(), GLErrorWrapper> {
         self.program.set_mat4u(self.sul_matrix as _, &matrix.m)?;
         self.program.set_uniform_2fv(self.sul_scale as _, scale)?;
         self.program.set_uniform_2fv(self.sul_offset as _, offset)?;
         self.program
-            .set_uniform_1i(self.sul_texture as _, tex_unit.0 as _)
+            .set_uniform_1i(self.sul_texture as _, tex_unit.0 as _)?;
+        self.program.set_uniform_4fv(self.sul_fg as _, fg)?;
+        self.program.set_uniform_4fv(self.sul_bg as _, bg)?;
+        Ok(())
     }
 
     pub fn draw<IT: GLBufferType>(
@@ -320,12 +329,14 @@ void main() {
         scale: &[f32; 2],
         offset: &[f32; 2],
         texture: &Texture,
+        fg: &[f32; 4],
+        bg: &[f32; 4],
         buffers: &VertexBufferBundle<GLfloat, IT>,
         gpu_state: &mut GPUState,
     ) -> Result<(), GLErrorWrapper> {
         self.program.use_()?;
         let texture_unit = ActiveTextureUnit(0);
-        self.set_parameters(matrix, scale, offset, &texture_unit)?;
+        self.set_parameters(matrix, scale, offset, &texture_unit, fg, bg)?;
 
         gpu_state.set_active_texture(texture_unit)?;
         texture.bind(gl::TEXTURE_2D)?;
@@ -340,6 +351,8 @@ void main() {
         &self,
         matrix: &XrMatrix4x4f,
         sprite: &SpriteLocation,
+        fg: &[f32; 4],
+        bg: &[f32; 4],
         buffers: &VertexBufferBundle<GLfloat, u8>,
         gpu_state: &mut GPUState,
     ) -> Result<(), GLErrorWrapper> {
@@ -348,6 +361,8 @@ void main() {
             sprite.scale(),
             sprite.offset(),
             sprite.texture,
+            fg,
+            bg,
             buffers,
             gpu_state,
         )
