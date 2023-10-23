@@ -138,7 +138,6 @@ impl MyScene {
             let model = {
                 let translate =
                     xr_matrix4x4f_create_translation_v(&controller_1.pose.position.into());
-                // let upright = matrix_rotation_about_x(PI);
                 let upright = rotate_x2(-1.0, 0.0);
                 let rotation_matrix =
                     xr_matrix4x4f_create_from_quaternion(&controller_1.pose.orientation.into());

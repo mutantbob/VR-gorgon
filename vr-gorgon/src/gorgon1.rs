@@ -256,7 +256,7 @@ vec3 c2s(vec3 rayn)
     pub fn spiral_shader(&self, index: usize) -> String {
         format!(
             "
-bool checker{index}(vec3 sc)
+bool checker{index}(vec3 sc, vec3 rayn)
 {{
     float theta = sc.x;
     float phi = sc.y;
@@ -273,12 +273,26 @@ bool checker{index}(vec3 sc)
     pub fn latitude_shader(&self, index: usize) -> String {
         format!(
             "
-bool checker{index}(vec3 sc)
+bool checker{index}(vec3 sc, vec3 rayn)
 {{
     float theta = sc.x;
-    float phi = sc.y;
     float offset = {amplitude:.6}*sin(mod(phase*2.0*{speed:.6}, 2.0)*PI);
     return 0.5 > mod( theta * {frequency}.0 / (2.0*PI) + offset, 1.0);
+}}",
+            index = index,
+            frequency = self.frequency,
+            speed = self.speed,
+            amplitude = self.amplitude,
+        )
+    }
+
+    pub fn cartesian_shader(&self, index: usize) -> String {
+        format!(
+            "
+bool checker{index}(vec3 sc, vec3 rayn)
+{{
+    float offset = {amplitude:.6}*sin(mod(phase*2.0*{speed:.6}, 2.0)*PI);
+    return 0.5 > mod( rayn.z * {frequency}.0 + offset, 1.0);
 }}",
             index = index,
             frequency = self.frequency,
@@ -308,6 +322,12 @@ impl GorgonFragmentShaderBuilder {
         self.pieces.push((swizzle.into(), glsl))
     }
 
+    pub fn add_cartesian(&mut self, settings: &GorgonSettings, swizzle: &str) {
+        let index = self.pieces.len();
+        let glsl = settings.cartesian_shader(index);
+        self.pieces.push((swizzle.into(), glsl))
+    }
+
     pub fn build(&self) -> String {
         use std::fmt::Write;
         let mut rval = GorgonSettings::shader_header();
@@ -324,7 +344,11 @@ impl GorgonFragmentShaderBuilder {
                     swizzle = swizzle
                 );
             }
-            let _ = writeln!(&mut xor_glsl, "        ^^ checker{}(sc_{})", index, swizzle);
+            let _ = writeln!(
+                &mut xor_glsl,
+                "        ^^ checker{}(sc_{}, rayn.{swizzle})",
+                index, swizzle
+            );
         }
 
         let _ = writeln!(
@@ -440,6 +464,11 @@ impl MultiGorgonSettings {
         for (swizzle, settings) in swizzles.iter().zip(self.latitudes.iter()) {
             if settings.enabled {
                 builder.add_latitude(settings, swizzle);
+            }
+        }
+        for (swizzle, settings) in swizzles.iter().zip(self.cartesians.iter()) {
+            if settings.enabled {
+                builder.add_cartesian(settings, swizzle);
             }
         }
 
