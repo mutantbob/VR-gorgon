@@ -367,6 +367,12 @@ impl MultiGorgonSettings {
         &shape[axis.index() as usize]
     }
 
+    pub fn toggle_enabled(&mut self, cursor: CPCursor) {
+        let gorgon = self.lookup_mut(cursor.row, cursor.axis);
+        gorgon.enabled = !gorgon.enabled;
+        self.dirty.replace(true);
+    }
+
     pub fn adjust_frequency(&mut self, delta: i32, cursor: CPCursor) {
         if delta == 0 {
             return;

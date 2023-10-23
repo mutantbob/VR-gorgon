@@ -196,7 +196,7 @@ impl ControlPanel {
         // if self.cursor.row == GorgonShape::Latitude {
         //     ring_y = cursor_y + 0.25;
         // }
-        cursor_y = self.header_2(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
+        cursor_y = self.header_2(matrix, gpu_state, cursor_y, &mut ring_sprite, settings)?;
 
         if self.cursor.row == GorgonShape::Latitude {
             cursor_y = self.latitude_menu(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
@@ -205,7 +205,7 @@ impl ControlPanel {
         // if self.cursor.row == GorgonShape::Cartesian {
         //     ring_y = cursor_y + 0.25;
         // }
-        cursor_y = self.header_3(matrix, gpu_state, cursor_y, &mut ring_sprite)?;
+        cursor_y = self.header_3(matrix, gpu_state, cursor_y, &mut ring_sprite, settings)?;
 
         #[allow(unused_assignments)]
         if self.cursor.row == GorgonShape::Cartesian {
@@ -253,36 +253,26 @@ impl ControlPanel {
             ));
         }
 
+        for (i, (sprite, axis)) in [
+            (self.sprites.x(), GorgonAxis::X),
+            (self.sprites.y(), GorgonAxis::Y),
+            (self.sprites.z(), GorgonAxis::Z),
+        ]
+        .iter()
+        .enumerate()
         {
-            let sprite = self.sprites.x();
+            let x = -0.25 + i as f32 * 0.5;
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(-0.25, y0 + sprite.scale[1], -0.01)
+                * xr_matrix4x4f_create_translation(x, y0 + sprite.scale[1], -0.01)
                 * xr_matrix4x4f_uniform_scale(0.25);
-            let fg = if spiral_enable && settings.lookup(self.cursor.row, GorgonAxis::X).enabled {
+            let fg = if settings.lookup(GorgonShape::Spiral, *axis).enabled {
                 &SpriteRectG::HIGHLIGHT
             } else {
                 &SpriteRectG::FG
             };
             self.sprite.draw2(&m2, &sprite, gpu_state, fg)?;
         }
-        {
-            let m2 = matrix
-                * xr_matrix4x4f_create_translation(0.25, y, -0.01)
-                * xr_matrix4x4f_uniform_scale(0.25);
-            let fg = SpriteRectG::fg_for(
-                spiral_enable && settings.lookup(self.cursor.row, GorgonAxis::Y).enabled,
-            );
-            self.sprite.draw2(&m2, &self.sprites.y(), gpu_state, fg)?;
-        }
-        {
-            let m2 = matrix
-                * xr_matrix4x4f_create_translation(0.75, y, -0.01)
-                * xr_matrix4x4f_uniform_scale(0.25);
-            let fg = SpriteRectG::fg_for(
-                spiral_enable && settings.lookup(self.cursor.row, GorgonAxis::Z).enabled,
-            );
-            self.sprite.draw2(&m2, &self.sprites.z(), gpu_state, fg)?;
-        };
+
         Ok(y0 + 0.5)
     }
 
@@ -371,6 +361,7 @@ impl ControlPanel {
         gpu_state: &mut GPUState,
         y0: f32,
         ring_loc: &mut Option<SpriteLocation<'a>>,
+        settings: &MultiGorgonSettings,
     ) -> Result<f32, GLErrorWrapper> {
         let y = y0 + 0.25;
         {
@@ -380,7 +371,9 @@ impl ControlPanel {
             self.latitude.draw(&m2, gpu_state)?;
         }
 
-        if self.cursor.row == GorgonShape::Latitude && self.cursor.subrow == GorgonParam::Enable {
+        let latitude_enable =
+            self.cursor.row == GorgonShape::Latitude && self.cursor.subrow == GorgonParam::Enable;
+        if latitude_enable {
             let x = self.cursor.axis.x1();
             *ring_loc = Some(SpriteLocation::new(
                 [0.25; 2],
@@ -389,19 +382,26 @@ impl ControlPanel {
             ));
         }
 
+        for (i, (sprite, axis)) in [
+            (self.sprites.x(), GorgonAxis::X),
+            (self.sprites.y(), GorgonAxis::Y),
+            (self.sprites.z(), GorgonAxis::Z),
+        ]
+        .iter()
+        .enumerate()
         {
+            let x = -0.25 + i as f32 * 0.5;
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(0.25, y, -0.01)
-                * xr_matrix4x4f_create_scale(0.75, 0.25, 1.0);
-            self.sprite.draw(
-                &m2,
-                &[0.75, 0.25],
-                &[-0.1, 0.0],
-                &self.sprites.texture,
-                gpu_state,
-                &SpriteRectG::FG,
-            )?;
+                * xr_matrix4x4f_create_translation(x, y0 + sprite.scale[1], -0.01)
+                * xr_matrix4x4f_uniform_scale(0.25);
+            let fg = if settings.lookup(GorgonShape::Latitude, *axis).enabled {
+                &SpriteRectG::HIGHLIGHT
+            } else {
+                &SpriteRectG::FG
+            };
+            self.sprite.draw2(&m2, &sprite, gpu_state, fg)?;
         }
+
         Ok(y0 + 0.5)
     }
 
@@ -449,6 +449,7 @@ impl ControlPanel {
         gpu_state: &mut GPUState,
         y0: f32,
         ring_loc: &mut Option<SpriteLocation<'a>>,
+        settings: &MultiGorgonSettings,
     ) -> Result<f32, GLErrorWrapper> {
         let y = y0 + 0.25;
         {
@@ -467,19 +468,26 @@ impl ControlPanel {
             ));
         }
 
+        for (i, (sprite, axis)) in [
+            (self.sprites.x(), GorgonAxis::X),
+            (self.sprites.y(), GorgonAxis::Y),
+            (self.sprites.z(), GorgonAxis::Z),
+        ]
+        .iter()
+        .enumerate()
         {
+            let x = -0.25 + i as f32 * 0.5;
             let m2 = matrix
-                * xr_matrix4x4f_create_translation(0.25, y, -0.01)
-                * xr_matrix4x4f_create_scale(0.75, 0.25, 1.0);
-            self.sprite.draw(
-                &m2,
-                &[0.75, 0.25],
-                &[-0.1, 0.0],
-                &self.sprites.texture,
-                gpu_state,
-                &SpriteRectG::FG,
-            )?;
+                * xr_matrix4x4f_create_translation(x, y0 + sprite.scale[1], -0.01)
+                * xr_matrix4x4f_uniform_scale(0.25);
+            let fg = if settings.lookup(GorgonShape::Cartesian, *axis).enabled {
+                &SpriteRectG::HIGHLIGHT
+            } else {
+                &SpriteRectG::FG
+            };
+            self.sprite.draw2(&m2, &sprite, gpu_state, fg)?;
         }
+
         Ok(y0 + 0.5)
     }
 
@@ -568,6 +576,12 @@ impl ControlPanel {
                 *(self.gorgon_val.borrow_mut()) =
                     Some(ValueEditor::new(val2, texture, w as _, h as _));
             }
+        }
+    }
+
+    pub fn handle_a_click(&mut self, settings: &mut MultiGorgonSettings) {
+        if let GorgonParam::Enable = self.cursor.subrow {
+            settings.toggle_enabled(self.cursor)
         }
     }
 }

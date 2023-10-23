@@ -193,6 +193,10 @@ impl MyScene {
         self.controls
             .handle_thumbstick(delta, &mut self.gorgon_settings)
     }
+
+    pub fn handle_a_click(&mut self) {
+        self.controls.handle_a_click(&mut self.gorgon_settings)
+    }
 }
 
 fn rotation_matrix_for_now() -> (f32, XrMatrix4x4f) {
